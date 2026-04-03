@@ -1,0 +1,8 @@
+{
+  "name": "NorCal Map Pro V2",
+  "short_name": "NorCal Map",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#eff6ff",
+  "theme_color": "#2563eb"
+}

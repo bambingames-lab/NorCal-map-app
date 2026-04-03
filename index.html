@@ -1,167 +1,142 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NorCal Map App</title>
-
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
-  <style>
-    body { margin:0; font-family: Arial; }
-    #map { height:100vh; }
-
-    .panel {
-      position:absolute;
-      top:10px;
-      left:10px;
-      background:white;
-      padding:10px;
-      border-radius:10px;
-      z-index:1000;
-      width:220px;
-    }
-
-    button {
-      width:100%;
-      margin-top:5px;
-      padding:10px;
-      border:none;
-      border-radius:8px;
-      background:#2563eb;
-      color:white;
-    }
-
-    select, input {
-      width:100%;
-      margin-top:5px;
-      padding:8px;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>NorCal Map Pro V2</title>
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-row">
+        <div>
+          <h1>NorCal Map Pro</h1>
+          <p class="muted">ZIPs, towns, and township aging in one phone-friendly app.</p>
+        </div>
+        <button class="ghost icon-only" id="toggleSidebarBtn" title="Hide panel">✕</button>
+      </div>
 
-<div class="panel">
-  <b>Mode</b>
-  <select id="mode">
-    <option value="zip">ZIP</option>
-    <option value="town">Town</option>
-    <option value="township">Township</option>
-  </select>
+      <section class="card">
+        <h2>GeoJSON Uploads</h2>
+        <label>ZIP boundaries<input type="file" id="zipFile" accept=".json,.geojson,application/geo+json,application/json" /></label>
+        <label>Town boundaries<input type="file" id="townFile" accept=".json,.geojson,application/geo+json,application/json" /></label>
+        <label>Township boundaries<input type="file" id="townshipFile" accept=".json,.geojson,application/geo+json,application/json" /></label>
+        <div class="button-row two-up">
+          <button id="loadDemoBtn">Load demo data</button>
+          <button class="ghost" id="clearLayersBtn">Clear layers</button>
+        </div>
+      </section>
 
-  <b>Color</b>
-  <input type="color" id="color" value="#2563eb">
+      <section class="card">
+        <h2>Editing</h2>
+        <label>Mode
+          <select id="modeSelect">
+            <option value="zip">ZIPs</option>
+            <option value="town">Towns</option>
+            <option value="township">Townships</option>
+          </select>
+        </label>
+        <label>Color for ZIPs/Towns
+          <input type="color" id="colorPicker" value="#2563eb" />
+        </label>
+        <div class="button-row two-up">
+          <button id="markTodayBtn">Mark township today</button>
+          <button class="ghost" id="setDateBtn">Set custom date</button>
+        </div>
+        <input type="date" id="dateInput" />
+      </section>
 
-  <button onclick="setToday()">Mark Township Today</button>
-</div>
+      <section class="card">
+        <h2>Search & Filters</h2>
+        <label>Search by name, ID, ZIP, GEOID
+          <input type="text" id="searchInput" placeholder="Search feature..." />
+        </label>
+        <label>County filter
+          <select id="countyFilter">
+            <option value="">All counties</option>
+          </select>
+        </label>
+        <div class="button-row two-up">
+          <button class="ghost" id="clearSearchBtn">Clear search</button>
+          <button class="ghost" id="zoomRegionBtn">Zoom NorCal</button>
+        </div>
+      </section>
 
-<div id="map"></div>
+      <section class="card">
+        <h2>Layers</h2>
+        <label class="checkbox"><input type="checkbox" id="zipVisible" checked /> ZIPs visible</label>
+        <label class="checkbox"><input type="checkbox" id="townVisible" checked /> Towns visible</label>
+        <label class="checkbox"><input type="checkbox" id="townshipVisible" checked /> Townships visible</label>
+      </section>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <section class="card">
+        <h2>Selected Area</h2>
+        <div id="selectedInfo" class="selected-empty">Nothing selected yet.</div>
+        <label>Rep / owner
+          <input type="text" id="repInput" placeholder="Assign a rep or owner" />
+        </label>
+        <label>Notes
+          <textarea id="notesInput" rows="4" placeholder="Add notes for this area"></textarea>
+        </label>
+        <div class="button-row two-up">
+          <button id="saveNotesBtn">Save details</button>
+          <button class="ghost" id="clearSelectionBtn">Clear selection</button>
+        </div>
+      </section>
 
-<script>
-const map = L.map('map').setView([39.4, -121.6], 7);
+      <section class="card">
+        <h2>Township Aging Legend</h2>
+        <div class="legend-bar">
+          <span style="background:#991b1b"></span>
+          <span style="background:#dc2626"></span>
+          <span style="background:#f87171"></span>
+          <span style="background:#fde68a"></span>
+          <span style="background:#d9f99d"></span>
+          <span style="background:#86efac"></span>
+        </div>
+        <div class="legend-labels">
+          <span>Recent</span>
+          <span>Longest out</span>
+        </div>
+      </section>
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+      <section class="card">
+        <h2>Dashboard</h2>
+        <div class="stats-grid" id="statsGrid">
+          <div><strong>0</strong><span>ZIPs</span></div>
+          <div><strong>0</strong><span>Towns</span></div>
+          <div><strong>0</strong><span>Townships</span></div>
+          <div><strong>0</strong><span>Overdue 8+ wks</span></div>
+        </div>
+      </section>
 
-let state = {
-  zips: {},
-  towns: {},
-  townships: {}
-};
+      <section class="card">
+        <h2>Save & Backup</h2>
+        <div class="button-row two-up">
+          <button id="saveLocalBtn">Save on device</button>
+          <button class="ghost" id="loadLocalBtn">Load saved</button>
+        </div>
+        <div class="button-row two-up">
+          <button id="exportProjectBtn">Export project</button>
+          <label class="button-like ghost">
+            Import project
+            <input type="file" id="importProjectFile" accept=".json,application/json" hidden />
+          </label>
+        </div>
+      </section>
+    </aside>
 
-let currentMode = "zip";
-let selectedLayer = null;
-let selectedFeature = null;
+    <main class="map-wrap">
+      <button class="floating-panel-btn" id="openSidebarBtn">☰ Panel</button>
+      <div id="map"></div>
+    </main>
+  </div>
 
-document.getElementById("mode").onchange = e => currentMode = e.target.value;
-
-function weeksSince(date){
-  if(!date) return null;
-  return Math.floor((Date.now() - new Date(date)) / (1000*60*60*24*7));
-}
-
-function townshipColor(date){
-  const w = weeksSince(date);
-  if(w === null) return "#ccc";
-  if(w <= 1) return "#b91c1c";
-  if(w <= 4) return "#ef4444";
-  if(w <= 8) return "#fde68a";
-  return "#86efac";
-}
-
-function style(feature){
-  const id = feature.properties.id || feature.properties.name;
-
-  if(feature.typeLayer === "zip"){
-    return { fillColor: state.zips[id]?.color || "#bfdbfe", fillOpacity:0.7, color:"#333" };
-  }
-
-  if(feature.typeLayer === "town"){
-    return { fillColor: state.towns[id]?.color || "#ddd6fe", fillOpacity:0.7, color:"#333" };
-  }
-
-  if(feature.typeLayer === "township"){
-    return { fillColor: townshipColor(state.townships[id]?.date), fillOpacity:0.7, color:"#333" };
-  }
-}
-
-function onEach(feature, layer, type){
-  feature.typeLayer = type;
-
-  layer.on("click", () => {
-    const id = feature.properties.id || feature.properties.name;
-    selectedLayer = layer;
-    selectedFeature = feature;
-
-    if(currentMode === type){
-      if(type === "zip"){
-        state.zips[id] = { color: document.getElementById("color").value };
-      }
-
-      if(type === "town"){
-        state.towns[id] = { color: document.getElementById("color").value };
-      }
-
-      redraw();
-    }
-  });
-}
-
-let zipLayer, townLayer, townshipLayer;
-
-function redraw(){
-  if(zipLayer) zipLayer.setStyle(style);
-  if(townLayer) townLayer.setStyle(style);
-  if(townshipLayer) townshipLayer.setStyle(style);
-}
-
-function setToday(){
-  if(!selectedFeature || currentMode !== "township") return;
-
-  const id = selectedFeature.properties.id || selectedFeature.properties.name;
-
-  state.townships[id] = { date: new Date().toISOString().split("T")[0] };
-
-  redraw();
-}
-
-// LOAD FILES (you'll upload later)
-async function loadLayer(url, type){
-  const data = await fetch(url).then(r=>r.json());
-
-  return L.geoJSON(data, {
-    style,
-    onEachFeature: (f,l)=>onEach(f,l,type)
-  }).addTo(map);
-}
-
-// Example placeholders (replace later)
-loadLayer("zips.geojson","zip").then(l=>zipLayer=l);
-loadLayer("towns.geojson","town").then(l=>townLayer=l);
-loadLayer("townships.geojson","township").then(l=>townshipLayer=l);
-
-</script>
-
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
