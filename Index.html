@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NorCal Map App</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <style>
+    body { margin:0; font-family: Arial; }
+    #map { height:100vh; }
+
+    .panel {
+      position:absolute;
+      top:10px;
+      left:10px;
+      background:white;
+      padding:10px;
+      border-radius:10px;
+      z-index:1000;
+      width:220px;
+    }
+
+    button {
+      width:100%;
+      margin-top:5px;
+      padding:10px;
+      border:none;
+      border-radius:8px;
+      background:#2563eb;
+      color:white;
+    }
+
+    select, input {
+      width:100%;
+      margin-top:5px;
+      padding:8px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="panel">
+  <b>Mode</b>
+  <select id="mode">
+    <option value="zip">ZIP</option>
+    <option value="town">Town</option>
+    <option value="township">Township</option>
+  </select>
+
+  <b>Color</b>
+  <input type="color" id="color" value="#2563eb">
+
+  <button onclick="setToday()">Mark Township Today</button>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+const map = L.map('map').setView([39.4, -121.6], 7);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+let state = {
+  zips: {},
+  towns: {},
+  townships: {}
+};
+
+let currentMode = "zip";
+let selectedLayer = null;
+let selectedFeature = null;
+
+document.getElementById("mode").onchange = e => currentMode = e.target.value;
+
+function weeksSince(date){
+  if(!date) return null;
+  return Math.floor((Date.now() - new Date(date)) / (1000*60*60*24*7));
+}
+
+function townshipColor(date){
+  const w = weeksSince(date);
+  if(w === null) return "#ccc";
+  if(w <= 1) return "#b91c1c";
+  if(w <= 4) return "#ef4444";
+  if(w <= 8) return "#fde68a";
+  return "#86efac";
+}
+
+function style(feature){
+  const id = feature.properties.id || feature.properties.name;
+
+  if(feature.typeLayer === "zip"){
+    return { fillColor: state.zips[id]?.color || "#bfdbfe", fillOpacity:0.7, color:"#333" };
+  }
+
+  if(feature.typeLayer === "town"){
+    return { fillColor: state.towns[id]?.color || "#ddd6fe", fillOpacity:0.7, color:"#333" };
+  }
+
+  if(feature.typeLayer === "township"){
+    return { fillColor: townshipColor(state.townships[id]?.date), fillOpacity:0.7, color:"#333" };
+  }
+}
+
+function onEach(feature, layer, type){
+  feature.typeLayer = type;
+
+  layer.on("click", () => {
+    const id = feature.properties.id || feature.properties.name;
+    selectedLayer = layer;
+    selectedFeature = feature;
+
+    if(currentMode === type){
+      if(type === "zip"){
+        state.zips[id] = { color: document.getElementById("color").value };
+      }
+
+      if(type === "town"){
+        state.towns[id] = { color: document.getElementById("color").value };
+      }
+
+      redraw();
+    }
+  });
+}
+
+let zipLayer, townLayer, townshipLayer;
+
+function redraw(){
+  if(zipLayer) zipLayer.setStyle(style);
+  if(townLayer) townLayer.setStyle(style);
+  if(townshipLayer) townshipLayer.setStyle(style);
+}
+
+function setToday(){
+  if(!selectedFeature || currentMode !== "township") return;
+
+  const id = selectedFeature.properties.id || selectedFeature.properties.name;
+
+  state.townships[id] = { date: new Date().toISOString().split("T")[0] };
+
+  redraw();
+}
+
+// LOAD FILES (you'll upload later)
+async function loadLayer(url, type){
+  const data = await fetch(url).then(r=>r.json());
+
+  return L.geoJSON(data, {
+    style,
+    onEachFeature: (f,l)=>onEach(f,l,type)
+  }).addTo(map);
+}
+
+// Example placeholders (replace later)
+loadLayer("zips.geojson","zip").then(l=>zipLayer=l);
+loadLayer("towns.geojson","town").then(l=>townLayer=l);
+loadLayer("townships.geojson","township").then(l=>townshipLayer=l);
+
+</script>
+
+</body>
+</html>
