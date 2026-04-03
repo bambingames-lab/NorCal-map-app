@@ -1,383 +1,300 @@
-const SOUTH_LAT = 38.068333333333335; // roughly Angels Camp
-const STORAGE_KEY = 'norcalTerritoryState_v4';
-const ZIPS_URL = 'https://gis.data.ca.gov/api/download/v1/items/f7afe55481244706903fbe6be5e986d3/geojson?layers=0';
-const INCORP_URL = 'https://gis.data.cnra.ca.gov/api/download/v1/items/8322505e8f1741c7b0de85684594e32a/geojson?layers=0';
-const CDP_URL = 'https://gis.data.ca.gov/api/download/v1/items/d1a79f9faea241ab9a3f9ef549a19fd7/geojson?layers=1';
+const STORAGE_KEY = 'norcal-area-manager-v4';
 
-const map = L.map('map', { zoomControl: true }).setView([39.2, -121.5], 7);
+let state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+  settings: {
+    zipFillMode: 'transparent',
+    zipWeight: 4.5
+  },
+  towns: {}
+};
+
+let layers = {
+  zips: null,
+  towns: null
+};
+
+let selectedFeature = null; // { type, id, feature, layer }
+
+const map = L.map('map', { zoomControl: true }).setView([39.4, -121.6], 7);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-let state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
-  zipFillMode: 'lightgray',
-  towns: {}
-};
-
-let selected = null;
-let zipLayer = null;
-let townLayer = null;
-let currentZipGeojson = null;
-let currentTownGeojson = null;
-
-const els = {
-  status: document.getElementById('status'),
-  zipFillMode: document.getElementById('zipFillMode'),
-  selectedInfo: document.getElementById('selectedInfo'),
-  visitDate: document.getElementById('visitDate'),
-  notesInput: document.getElementById('notesInput'),
-  searchInput: document.getElementById('searchInput'),
-};
-
-function setStatus(text) {
-  els.status.textContent = text;
-}
+const panel = document.getElementById('panel');
+const showPanelBtn = document.getElementById('showPanelBtn');
+const togglePanelBtn = document.getElementById('togglePanelBtn');
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function weeksSince(dateStr) {
-  if (!dateStr) return null;
-  const then = new Date(dateStr + 'T00:00:00');
-  const diff = Date.now() - then.getTime();
-  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24 * 7)));
-}
-
-function recencyColor(dateStr) {
-  const w = weeksSince(dateStr);
-  if (w === null) return '#d1d5db';
-  if (w <= 1) return '#991b1b';
-  if (w <= 2) return '#dc2626';
-  if (w <= 3) return '#ef4444';
-  if (w <= 5) return '#f97316';
-  if (w <= 7) return '#facc15';
-  if (w <= 10) return '#bef264';
-  return '#bbf7d0';
-}
-
-function todayStr() {
-  return new Date().toISOString().split('T')[0];
+function featureId(feature) {
+  const p = feature.properties || {};
+  return p.id || p.ZCTA5CE20 || p.GEOID || p.NAME || p.name || String(Math.random());
 }
 
 function featureLabel(feature) {
   const p = feature.properties || {};
-  return p.NAME || p.name || p.ZIP_CODE || p.ZCTA5 || p.ZCTA5CE10 || p.zip || 'Unnamed area';
+  return p.NAME || p.name || p.ZCTA5CE20 || p.GEOID || 'Unnamed area';
 }
 
-function featureId(feature, type) {
-  const p = feature.properties || {};
-  if (type === 'zip') return String(p.ZIP_CODE || p.ZCTA5 || p.ZCTA5CE10 || p.GEOID || p.zip || featureLabel(feature));
-  return String(p.NAME || p.name || p.GEOID || p.PLACE || p.OBJECTID || featureLabel(feature));
+function weeksSince(dateStr) {
+  if (!dateStr) return null;
+  const then = new Date(dateStr + 'T00:00:00');
+  const now = new Date();
+  const ms = now - then;
+  return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24 * 7)));
 }
 
-function getTownRecord(id) {
-  if (!state.towns[id]) {
-    state.towns[id] = { lastVisited: null, notes: '' };
-  }
-  return state.towns[id];
+// Turns fully green at about 12 weeks / 3 months out.
+function townRecencyColor(dateStr) {
+  const w = weeksSince(dateStr);
+  if (w === null) return '#d1d5db';
+  if (w <= 1) return '#b91c1c';
+  if (w <= 3) return '#ef4444';
+  if (w <= 5) return '#f97316';
+  if (w <= 8) return '#facc15';
+  if (w <= 11) return '#a3e635';
+  return '#86efac';
 }
 
 function zipStyle() {
+  const fillMode = state.settings.zipFillMode;
   return {
-    color: '#374151',
-    weight: 2.5,
-    fillColor: state.zipFillMode === 'lightgray' ? '#d1d5db' : 'transparent',
-    fillOpacity: state.zipFillMode === 'lightgray' ? 0.24 : 0
+    color: '#1f2937',
+    weight: Number(state.settings.zipWeight || 4.5),
+    opacity: 1,
+    fillColor: fillMode === 'lightgray' ? '#d1d5db' : 'transparent',
+    fillOpacity: fillMode === 'lightgray' ? 0.18 : 0
   };
 }
 
 function townStyle(feature) {
-  const id = featureId(feature, 'town');
-  const rec = getTownRecord(id);
+  const id = featureId(feature);
+  const record = state.towns[id] || {};
   return {
     color: '#111827',
-    weight: 1,
-    fillColor: recencyColor(rec.lastVisited),
-    fillOpacity: 0.63
+    weight: 1.4,
+    opacity: 0.9,
+    fillColor: townRecencyColor(record.lastVisited),
+    fillOpacity: 0.62
   };
 }
 
-function applySelectionStyle(layer, type, feature) {
-  if (type === 'zip') {
-    layer.setStyle({ weight: 4, color: '#000' });
-  } else {
-    layer.setStyle({ ...townStyle(feature), weight: 3, color: '#000' });
-  }
-}
+function updateSelectedInfo() {
+  const box = document.getElementById('selectedInfo');
+  const notes = document.getElementById('notesInput');
 
-function clearSelectionStyle() {
-  if (!selected) return;
-  if (selected.type === 'zip') {
-    selected.layer.setStyle(zipStyle());
-  } else {
-    selected.layer.setStyle(townStyle(selected.feature));
-  }
-}
-
-function updateSelectionInfo() {
-  if (!selected) {
-    els.selectedInfo.innerHTML = 'Nothing selected yet.';
-    els.visitDate.value = '';
-    els.notesInput.value = '';
+  if (!selectedFeature) {
+    box.innerHTML = '<strong>No selection</strong><br>Tap a town to update the last-checked date.';
+    notes.value = '';
     return;
   }
-  const label = featureLabel(selected.feature);
-  if (selected.type === 'zip') {
-    els.selectedInfo.innerHTML = `<strong>${label}</strong><br>Type: ZIP<br>ZIP fill: ${state.zipFillMode}`;
-    els.visitDate.value = '';
-    els.notesInput.value = '';
+
+  const { type, id, feature } = selectedFeature;
+  const label = featureLabel(feature);
+
+  if (type === 'zips') {
+    box.innerHTML = `<strong>${label}</strong><br>Type: ZIP<br>ZIP fill: ${state.settings.zipFillMode}<br>ZIP line weight: ${state.settings.zipWeight}`;
+    notes.value = '';
     return;
   }
-  const rec = getTownRecord(selected.id);
+
+  const rec = state.towns[id] || {};
   const weeks = weeksSince(rec.lastVisited);
-  els.selectedInfo.innerHTML = `<strong>${label}</strong><br>Type: Town<br>Last visited: ${rec.lastVisited || 'Not set'}<br>Weeks since: ${weeks === null ? 'N/A' : weeks}<br>Notes: ${rec.notes || 'None'}`;
-  els.visitDate.value = rec.lastVisited || '';
-  els.notesInput.value = rec.notes || '';
+  box.innerHTML = `<strong>${label}</strong><br>Type: Town<br>Last checked: ${rec.lastVisited || 'Not set'}<br>Weeks out: ${weeks === null ? 'N/A' : weeks}<br>Notes: ${rec.notes || 'None'}`;
+  notes.value = rec.notes || '';
+}
+
+function resetLayerLook(type, layer, feature) {
+  if (type === 'zips') layer.setStyle(zipStyle());
+  if (type === 'towns') layer.setStyle(townStyle(feature));
+}
+
+function applySelectedLook(type, layer, feature) {
+  resetLayerLook(type, layer, feature);
+  layer.setStyle({
+    weight: type === 'zips' ? Number(state.settings.zipWeight || 4.5) + 1.8 : 3,
+    color: '#000000'
+  });
+  if (layer.bringToFront) layer.bringToFront();
 }
 
 function selectFeature(type, feature, layer) {
-  clearSelectionStyle();
-  selected = { type, feature, layer, id: featureId(feature, type) };
-  applySelectionStyle(layer, type, feature);
-  updateSelectionInfo();
+  if (selectedFeature) {
+    resetLayerLook(selectedFeature.type, selectedFeature.layer, selectedFeature.feature);
+  }
+  selectedFeature = { type, id: featureId(feature), feature, layer };
+  applySelectedLook(type, layer, feature);
+  updateSelectedInfo();
 }
 
-function bindLayerEvents(type) {
-  return (feature, layer) => {
+function bindFeature(type) {
+  return function(feature, layer) {
     layer.on('click', () => selectFeature(type, feature, layer));
     layer.on('mouseover', () => {
-      layer.setStyle({ weight: type === 'zip' ? 3.5 : 2 });
+      layer.setStyle({ weight: type === 'zips' ? Number(state.settings.zipWeight || 4.5) + 0.8 : 2.2 });
     });
     layer.on('mouseout', () => {
-      if (selected && selected.layer === layer) {
-        applySelectionStyle(layer, type, feature);
+      if (selectedFeature && selectedFeature.layer === layer) {
+        applySelectedLook(type, layer, feature);
       } else {
-        layer.setStyle(type === 'zip' ? zipStyle() : townStyle(feature));
+        resetLayerLook(type, layer, feature);
       }
     });
   };
 }
 
-function bboxNorthEnough(feature) {
+function loadGeoJsonText(text, type) {
+  const data = JSON.parse(text);
+  if (layers[type]) map.removeLayer(layers[type]);
+
+  layers[type] = L.geoJSON(data, {
+    style: (feature) => type === 'zips' ? zipStyle() : townStyle(feature),
+    onEachFeature: bindFeature(type)
+  }).addTo(map);
+
   try {
-    const bbox = turf.bbox(feature);
-    return bbox[3] >= SOUTH_LAT;
-  } catch {
-    return true;
-  }
+    map.fitBounds(layers[type].getBounds(), { padding: [20, 20] });
+  } catch (e) {}
 }
 
-function clipNorthOfAngelsCamp(fc) {
-  const clipPoly = turf.bboxPolygon([-125, SOUTH_LAT, -116, 43]);
-  const out = [];
-  for (const f of fc.features) {
-    if (!bboxNorthEnough(f)) continue;
-    try {
-      const inter = turf.intersect(turf.featureCollection([f, clipPoly]));
-      if (inter) {
-        inter.properties = { ...f.properties };
-        out.push(inter);
-      }
-    } catch {
-      out.push(f);
-    }
-  }
-  return { type: 'FeatureCollection', features: out };
-}
-
-function normalizeTownProperties(fc, sourceName) {
-  return {
-    type: 'FeatureCollection',
-    features: fc.features.map(f => ({
-      type: 'Feature',
-      geometry: f.geometry,
-      properties: {
-        ...f.properties,
-        NAME: f.properties.NAME || f.properties.name || f.properties.CITY || 'Unnamed town',
-        SOURCE: sourceName
-      }
-    }))
-  };
-}
-
-function dedupeByName(fc) {
-  const seen = new Set();
-  const features = [];
-  for (const f of fc.features) {
-    const name = (featureLabel(f) || '').toLowerCase();
-    if (!name || seen.has(name)) continue;
-    seen.add(name);
-    features.push(f);
-  }
-  return { type: 'FeatureCollection', features };
-}
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
-  return res.json();
-}
-
-async function loadOfficialData() {
-  setStatus('Downloading ZIP boundaries…');
-  const zipsRaw = await fetchJson(ZIPS_URL);
-  setStatus('Filtering ZIP boundaries to north of Angels Camp…');
-  const zips = clipNorthOfAngelsCamp(zipsRaw);
-  currentZipGeojson = zips;
-
-  setStatus('Downloading incorporated cities…');
-  const citiesRaw = await fetchJson(INCORP_URL);
-  setStatus('Downloading census-designated places…');
-  const cdpRaw = await fetchJson(CDP_URL);
-
-  setStatus('Combining towns…');
-  const townsMerged = {
-    type: 'FeatureCollection',
-    features: [
-      ...normalizeTownProperties(citiesRaw, 'Incorporated city').features,
-      ...normalizeTownProperties(cdpRaw, 'CDP').features,
-    ]
-  };
-  const clippedTowns = dedupeByName(clipNorthOfAngelsCamp(townsMerged));
-  currentTownGeojson = clippedTowns;
-
-  renderLayers();
-  setStatus(`Loaded ${currentZipGeojson.features.length} ZIP areas and ${currentTownGeojson.features.length} towns.`);
-}
-
-function renderLayers() {
-  clearSelectionStyle();
-  selected = null;
-  updateSelectionInfo();
-
-  if (zipLayer) map.removeLayer(zipLayer);
-  if (townLayer) map.removeLayer(townLayer);
-
-  if (currentZipGeojson) {
-    zipLayer = L.geoJSON(currentZipGeojson, {
-      style: zipStyle,
-      onEachFeature: bindLayerEvents('zip')
-    }).addTo(map);
-  }
-
-  if (currentTownGeojson) {
-    townLayer = L.geoJSON(currentTownGeojson, {
-      style: townStyle,
-      onEachFeature: bindLayerEvents('town')
-    }).addTo(map);
-  }
-
-  const group = L.featureGroup([].concat(zipLayer ? [zipLayer] : [], townLayer ? [townLayer] : []));
-  try { map.fitBounds(group.getBounds(), { padding: [20, 20] }); } catch {}
-}
-
-function markSelectedDate(dateStr) {
-  if (!selected || selected.type !== 'town') return;
-  const rec = getTownRecord(selected.id);
-  rec.lastVisited = dateStr;
-  selected.layer.setStyle(townStyle(selected.feature));
-  applySelectionStyle(selected.layer, 'town', selected.feature);
+function setSelectedTownDate(dateStr) {
+  if (!selectedFeature || selectedFeature.type !== 'towns') return;
+  state.towns[selectedFeature.id] = state.towns[selectedFeature.id] || {};
+  state.towns[selectedFeature.id].lastVisited = dateStr;
+  applySelectedLook('towns', selectedFeature.layer, selectedFeature.feature);
   saveState();
-  updateSelectionInfo();
+  updateSelectedInfo();
 }
 
-function saveSelectedNotes() {
-  if (!selected || selected.type !== 'town') return;
-  const rec = getTownRecord(selected.id);
-  rec.notes = els.notesInput.value.trim();
+function setSelectedTownNotes(text) {
+  if (!selectedFeature || selectedFeature.type !== 'towns') return;
+  state.towns[selectedFeature.id] = state.towns[selectedFeature.id] || {};
+  state.towns[selectedFeature.id].notes = text;
   saveState();
-  updateSelectionInfo();
+  updateSelectedInfo();
 }
 
-function searchAndZoom(term) {
-  const q = term.trim().toLowerCase();
-  if (!q) return;
-  let found = false;
-  [townLayer, zipLayer].forEach(layerGroup => {
-    if (!layerGroup || found) return;
-    layerGroup.eachLayer(layer => {
-      if (found) return;
-      const text = JSON.stringify(layer.feature.properties).toLowerCase();
-      if (text.includes(q)) {
-        found = true;
-        map.fitBounds(layer.getBounds(), { padding: [30, 30] });
-        selectFeature(layerGroup === townLayer ? 'town' : 'zip', layer.feature, layer);
-      }
-    });
-  });
-}
-
-function downloadJson(obj, filename) {
-  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = 'norcal-area-manager-backup.json';
   a.click();
   URL.revokeObjectURL(url);
 }
 
-function exportState() {
-  downloadJson(state, 'norcal-territory-activity-backup.json');
-}
-
-function exportGeojson() {
-  if (!currentZipGeojson || !currentTownGeojson) {
-    alert('Load the official data first.');
-    return;
-  }
-  downloadJson(currentZipGeojson, 'norcal-zip-boundaries-north-of-angels-camp.geojson');
-  setTimeout(() => downloadJson(currentTownGeojson, 'norcal-towns-north-of-angels-camp.geojson'), 400);
-}
-
-function importState(file) {
+function importBackup(file) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
       state = JSON.parse(reader.result);
       saveState();
-      renderLayers();
-      setStatus('Activity backup imported.');
+      document.getElementById('zipFillMode').value = state.settings.zipFillMode || 'transparent';
+      document.getElementById('zipWeight').value = state.settings.zipWeight || 4.5;
+      if (layers.zips) layers.zips.setStyle(() => zipStyle());
+      if (layers.towns) layers.towns.setStyle((f) => townStyle(f));
+      selectedFeature = null;
+      updateSelectedInfo();
+      alert('Backup loaded.');
     } catch {
-      alert('Could not import that backup file.');
+      alert('Backup file could not be read.');
     }
   };
   reader.readAsText(file);
 }
 
-document.getElementById('loadOfficialBtn').addEventListener('click', async () => {
-  try {
-    await loadOfficialData();
-  } catch (err) {
-    console.error(err);
-    setStatus('Could not load the remote data. If this happens on GitHub Pages, try again in a minute.');
-  }
-});
+function searchMap(term) {
+  const q = (term || '').toLowerCase().trim();
+  if (!q) return;
 
-document.getElementById('markTodayBtn').addEventListener('click', () => markSelectedDate(todayStr()));
-document.getElementById('setDateBtn').addEventListener('click', () => {
-  if (!els.visitDate.value) return alert('Choose a date first.');
-  markSelectedDate(els.visitDate.value);
-});
-document.getElementById('saveNotesBtn').addEventListener('click', saveSelectedNotes);
-document.getElementById('saveBtn').addEventListener('click', () => { saveState(); setStatus('Saved on this device.'); });
-document.getElementById('exportStateBtn').addEventListener('click', exportState);
-document.getElementById('exportGeojsonBtn').addEventListener('click', exportGeojson);
-document.getElementById('importStateFile').addEventListener('change', e => { if (e.target.files[0]) importState(e.target.files[0]); });
-document.getElementById('searchBtn').addEventListener('click', () => searchAndZoom(els.searchInput.value));
-els.searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') searchAndZoom(els.searchInput.value); });
-els.zipFillMode.value = state.zipFillMode || 'lightgray';
-els.zipFillMode.addEventListener('change', e => {
-  state.zipFillMode = e.target.value;
-  saveState();
-  if (zipLayer) zipLayer.setStyle(zipStyle);
-  if (selected && selected.type === 'zip') applySelectionStyle(selected.layer, 'zip', selected.feature);
-  updateSelectionInfo();
-});
+  ['towns', 'zips'].forEach(type => {
+    const group = layers[type];
+    if (!group) return;
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+    group.eachLayer(layer => {
+      const props = layer.feature.properties || {};
+      const haystack = [
+        props.NAME, props.name, props.ZCTA5CE20, props.GEOID, props.id
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      if (haystack.includes(q)) {
+        map.fitBounds(layer.getBounds(), { padding: [25, 25] });
+        selectFeature(type, layer.feature, layer);
+      }
+    });
+  });
 }
 
-updateSelectionInfo();
+document.getElementById('zipFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadGeoJsonText(await file.text(), 'zips');
+});
+
+document.getElementById('townFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  loadGeoJsonText(await file.text(), 'towns');
+});
+
+document.getElementById('zipFillMode').addEventListener('change', (e) => {
+  state.settings.zipFillMode = e.target.value;
+  saveState();
+  if (layers.zips) layers.zips.setStyle(() => zipStyle());
+  updateSelectedInfo();
+});
+
+document.getElementById('zipWeight').addEventListener('input', (e) => {
+  state.settings.zipWeight = Number(e.target.value);
+  saveState();
+  if (layers.zips) layers.zips.setStyle(() => zipStyle());
+  if (selectedFeature && selectedFeature.type === 'zips') {
+    applySelectedLook('zips', selectedFeature.layer, selectedFeature.feature);
+  }
+  updateSelectedInfo();
+});
+
+document.getElementById('markTodayBtn').addEventListener('click', () => {
+  const today = new Date().toISOString().split('T')[0];
+  setSelectedTownDate(today);
+});
+
+document.getElementById('setDateBtn').addEventListener('click', () => {
+  const d = document.getElementById('visitDate').value;
+  if (!d) return alert('Choose a date first.');
+  setSelectedTownDate(d);
+});
+
+document.getElementById('saveNotesBtn').addEventListener('click', () => {
+  setSelectedTownNotes(document.getElementById('notesInput').value.trim());
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  saveState();
+  alert('Saved on this device.');
+});
+
+document.getElementById('exportBtn').addEventListener('click', exportBackup);
+
+document.getElementById('backupFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) importBackup(file);
+});
+
+document.getElementById('searchBtn').addEventListener('click', () => {
+  searchMap(document.getElementById('searchInput').value);
+});
+
+document.getElementById('searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') searchMap(e.target.value);
+});
+
+showPanelBtn.addEventListener('click', () => panel.classList.remove('hidden'));
+togglePanelBtn.addEventListener('click', () => panel.classList.add('hidden'));
+
+document.getElementById('zipFillMode').value = state.settings.zipFillMode || 'transparent';
+document.getElementById('zipWeight').value = state.settings.zipWeight || 4.5;
+updateSelectedInfo();
