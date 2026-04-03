@@ -3,87 +3,450 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NorCal Area Manager</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2563eb">
+  <title>NorCal City Check Tracker</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="style.css"/>
+  <style>
+    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
+    #map { height:100vh; width:100%; }
+    .panel {
+      position:absolute; top:12px; left:12px; z-index:1200;
+      width:320px; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px);
+      overflow-y:auto; background:rgba(255,255,255,.97); border-radius:16px;
+      box-shadow:0 12px 30px rgba(0,0,0,.18); padding:14px; border:1px solid #e5e7eb;
+    }
+    .panel.hidden { display:none; }
+    h1 { margin:0 0 10px; font-size:20px; }
+    .section { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px; margin-top:10px; }
+    .title { font-weight:700; font-size:14px; margin-bottom:8px; }
+    label { display:block; margin:8px 0 4px; font-size:13px; font-weight:700; }
+    input[type="text"], input[type="date"], select, textarea, button {
+      width:100%; box-sizing:border-box; border-radius:10px; font-size:14px;
+    }
+    input[type="text"], input[type="date"], select, textarea {
+      border:1px solid #d1d5db; padding:10px; background:#fff;
+    }
+    textarea { min-height:78px; resize:vertical; }
+    button {
+      border:none; padding:11px 12px; margin-top:8px; background:#2563eb; color:#fff; font-weight:700;
+    }
+    button.secondary { background:#eef2ff; color:#1f2937; }
+    .row { display:grid; grid-template-columns:1fr auto; gap:8px; }
+    .info { background:#eff6ff; border:1px solid #dbeafe; border-radius:12px; padding:10px; font-size:14px; line-height:1.4; }
+    .legend { display:grid; grid-template-columns:repeat(6,1fr); height:18px; border-radius:999px; overflow:hidden; border:1px solid #d1d5db; margin-top:8px; }
+    .legend div:nth-child(1){background:#b91c1c;} .legend div:nth-child(2){background:#ef4444;}
+    .legend div:nth-child(3){background:#f97316;} .legend div:nth-child(4){background:#facc15;}
+    .legend div:nth-child(5){background:#a3e635;} .legend div:nth-child(6){background:#86efac;}
+    .legend-labels { display:flex; justify-content:space-between; margin-top:6px; color:#6b7280; font-size:12px; }
+    .small { margin-top:8px; color:#6b7280; font-size:12px; line-height:1.35; }
+    .fab { position:absolute; right:12px; top:12px; z-index:1200; width:auto; padding:10px 14px; box-shadow:0 10px 24px rgba(0,0,0,.18); }
+    .status { font-size:12px; color:#374151; margin-top:8px; }
+  </style>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="panel" id="panel">
-      <div class="panel-header">
-        <h1>NorCal Area Manager</h1>
-        <button class="ghost mobile-only" id="togglePanelBtn" type="button">Hide</button>
-      </div>
+  <aside class="panel" id="panel">
+    <h1>NorCal City Check Tracker</h1>
 
-      <div class="section">
-        <div class="section-title">Upload map layers</div>
-        <label>ZIP GeoJSON</label>
-        <input type="file" id="zipFile" accept=".geojson,.json">
-        <label>Towns GeoJSON</label>
-        <input type="file" id="townFile" accept=".geojson,.json">
-        <div class="small">ZIPs stay as the bold base layer. Towns are the tracked visit layer.</div>
-      </div>
+    <div class="section">
+      <div class="title">Live data</div>
+      <button id="loadBtn" type="button">Load real Northern California data</button>
+      <div class="small">Loads California ZIP boundaries plus incorporated cities and CDPs, then keeps only areas north of Angels Camp.</div>
+      <div class="status" id="status">Ready.</div>
+    </div>
 
-      <div class="section">
-        <div class="section-title">ZIP appearance</div>
-        <label>ZIP fill</label>
-        <select id="zipFillMode">
-          <option value="transparent">Transparent</option>
-          <option value="lightgray">Light gray</option>
-        </select>
-        <label>ZIP line weight</label>
-        <input type="range" id="zipWeight" min="2" max="7" step="0.5" value="4.5">
-        <div class="small">This makes ZIP borders broader and more distinct.</div>
-      </div>
+    <div class="section">
+      <div class="title">ZIP appearance</div>
+      <label>ZIP fill</label>
+      <select id="zipFillMode">
+        <option value="transparent">Transparent</option>
+        <option value="lightgray">Light gray</option>
+      </select>
+      <label>ZIP line weight</label>
+      <select id="zipWeight">
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+      <div class="small">ZIP outlines stay broad and distinct.</div>
+    </div>
 
-      <div class="section">
-        <div class="section-title">Town visit controls</div>
-        <button id="markTodayBtn" type="button">Mark selected town today</button>
-        <label>Set specific last-checked date</label>
-        <input type="date" id="visitDate">
-        <button class="secondary" id="setDateBtn" type="button">Apply date</button>
-        <div class="legend">
-          <div></div><div></div><div></div><div></div><div></div><div></div>
-        </div>
-        <div class="legend-labels">
-          <span>Now</span>
-          <span>~ 3 months</span>
-        </div>
-        <div class="small">Recent checks show red. Areas turn green around 12 weeks out.</div>
-      </div>
+    <div class="section">
+      <div class="title">City check controls</div>
+      <button id="markTodayBtn" type="button">Mark selected city today</button>
+      <label>Set specific last-checked date</label>
+      <input type="date" id="visitDate">
+      <button class="secondary" id="setDateBtn" type="button">Apply date</button>
+      <div class="legend"><div></div><div></div><div></div><div></div><div></div><div></div></div>
+      <div class="legend-labels"><span>Now</span><span>About 3 months</span></div>
+      <div class="small">Red means checked recently. Cities turn green around 12 weeks out.</div>
+    </div>
 
-      <div class="section">
-        <div class="section-title">Search towns or ZIPs</div>
-        <div class="search-row">
-          <input type="text" id="searchInput" placeholder="Town, ZIP, GEOID">
-          <button id="searchBtn" type="button">Find</button>
-        </div>
+    <div class="section">
+      <div class="title">Search</div>
+      <div class="row">
+        <input id="searchInput" type="text" placeholder="City or ZIP">
+        <button id="searchBtn" type="button">Find</button>
       </div>
+    </div>
 
-      <div class="section">
-        <div class="section-title">Selected area</div>
-        <div id="selectedInfo" class="info-box">No selection yet.</div>
-        <label>Notes</label>
-        <textarea id="notesInput" placeholder="Add notes for the selected town"></textarea>
-        <button class="secondary" id="saveNotesBtn" type="button">Save notes</button>
-      </div>
+    <div class="section">
+      <div class="title">Selected area</div>
+      <div class="info" id="selectedInfo">No selection yet.</div>
+      <label>Notes</label>
+      <textarea id="notesInput" placeholder="Notes for the selected city"></textarea>
+      <button class="secondary" id="saveNotesBtn" type="button">Save notes</button>
+    </div>
 
-      <div class="section">
-        <div class="section-title">Save and backup</div>
-        <button id="saveBtn" type="button">Save on device</button>
-        <button class="secondary" id="exportBtn" type="button">Export backup</button>
-        <label>Import backup</label>
-        <input type="file" id="backupFile" accept=".json">
-      </div>
-    </aside>
+    <div class="section">
+      <div class="title">Save / backup</div>
+      <button id="saveBtn" type="button">Save on device</button>
+      <button class="secondary" id="exportBtn" type="button">Export backup</button>
+      <label>Import backup</label>
+      <input type="file" id="backupFile" accept=".json">
+    </div>
+  </aside>
 
-    <button class="floating-toggle" id="showPanelBtn" type="button">Menu</button>
-    <div id="map"></div>
-  </div>
+  <button class="fab secondary" id="togglePanelBtn" type="button">Menu</button>
+  <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="app.js"></script>
+  <script>
+    const ANGELS_CAMP_LAT = 38.0683;
+    const STORAGE_KEY = 'norcal-real-data-v1';
+    const state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+      settings: { zipFillMode: 'transparent', zipWeight: 4 },
+      cities: {}
+    };
+
+    const map = L.map('map', { zoomControl: true }).setView([39.4, -121.6], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    let layers = { zips: null, cities: null };
+    let selected = null;
+
+    const statusEl = document.getElementById('status');
+    const panel = document.getElementById('panel');
+    document.getElementById('togglePanelBtn').addEventListener('click', () => panel.classList.toggle('hidden'));
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+    function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    function todayString() { return new Date().toISOString().split('T')[0]; }
+
+    function weeksSince(dateStr) {
+      if (!dateStr) return null;
+      const then = new Date(dateStr + 'T00:00:00');
+      return Math.max(0, Math.floor((Date.now() - then.getTime()) / (1000 * 60 * 60 * 24 * 7)));
+    }
+
+    function cityColor(dateStr) {
+      const w = weeksSince(dateStr);
+      if (w === null) return '#d1d5db';
+      if (w <= 1) return '#b91c1c';
+      if (w <= 3) return '#ef4444';
+      if (w <= 5) return '#f97316';
+      if (w <= 8) return '#facc15';
+      if (w <= 11) return '#a3e635';
+      return '#86efac';
+    }
+
+    function zipStyle() {
+      const fillMode = state.settings.zipFillMode;
+      return {
+        color: '#111827',
+        weight: Number(state.settings.zipWeight || 4),
+        opacity: 1,
+        fillColor: fillMode === 'lightgray' ? '#d1d5db' : 'transparent',
+        fillOpacity: fillMode === 'lightgray' ? 0.16 : 0
+      };
+    }
+
+    function cityStyle(feature) {
+      const rec = state.cities[getCityId(feature)] || {};
+      return {
+        color: '#111827',
+        weight: 1.2,
+        opacity: .9,
+        fillColor: cityColor(rec.lastVisited),
+        fillOpacity: .65
+      };
+    }
+
+    function getCityId(feature) {
+      const p = feature.properties || {};
+      return p.kind + '|' + (p.CITY || p.NAME || p.GEOID || p.id);
+    }
+
+    function getCityLabel(feature) {
+      const p = feature.properties || {};
+      return p.CITY || p.NAME || p.ZIP_CODE || p.GEOID || 'Unnamed';
+    }
+
+    function centroidLat(geometry) {
+      let minY = Infinity, maxY = -Infinity;
+      function walk(coords) {
+        if (!Array.isArray(coords)) return;
+        if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+          const y = coords[1];
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        } else {
+          coords.forEach(walk);
+        }
+      }
+      walk(geometry.coordinates);
+      return (minY + maxY) / 2;
+    }
+
+    function northOfAngelsCamp(feature) {
+      return centroidLat(feature.geometry) >= ANGELS_CAMP_LAT;
+    }
+
+    async function fetchArcGisAll(url, outFields, where = '1=1', pageSize = 1000) {
+      let all = [];
+      let offset = 0;
+      while (true) {
+        const params = new URLSearchParams({
+          where,
+          outFields,
+          returnGeometry: 'true',
+          outSR: '4326',
+          f: 'geojson',
+          resultOffset: String(offset),
+          resultRecordCount: String(pageSize)
+        });
+        const res = await fetch(url + '/query?' + params.toString());
+        if (!res.ok) throw new Error('Failed to fetch ' + url);
+        const json = await res.json();
+        const batch = json.features || [];
+        all = all.concat(batch);
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
+      return { type: 'FeatureCollection', features: all };
+    }
+
+    function clearSelectionLook() {
+      if (!selected) return;
+      const { type, layer, feature } = selected;
+      if (type === 'zips') layer.setStyle(zipStyle());
+      if (type === 'cities') layer.setStyle(cityStyle(feature));
+    }
+
+    function applySelectedLook(type, layer, feature) {
+      if (type === 'zips') layer.setStyle({ ...zipStyle(), color:'#000', weight:Number(state.settings.zipWeight || 4) + 1.5 });
+      if (type === 'cities') layer.setStyle({ ...cityStyle(feature), color:'#000', weight:3 });
+      if (layer.bringToFront) layer.bringToFront();
+    }
+
+    function updateSelectedInfo() {
+      const box = document.getElementById('selectedInfo');
+      const notes = document.getElementById('notesInput');
+      if (!selected) {
+        box.innerHTML = '<strong>No selection</strong><br>Tap a city boundary to track when it was last checked.';
+        notes.value = '';
+        return;
+      }
+      if (selected.type === 'zips') {
+        box.innerHTML = `<strong>${getCityLabel(selected.feature)}</strong><br>Type: ZIP<br>Base map only.`;
+        notes.value = '';
+        return;
+      }
+      const rec = state.cities[getCityId(selected.feature)] || {};
+      const weeks = weeksSince(rec.lastVisited);
+      const p = selected.feature.properties || {};
+      box.innerHTML = `<strong>${getCityLabel(selected.feature)}</strong><br>County: ${p.COUNTY || p.COUNTYFP || 'N/A'}<br>Type: ${p.kind || 'city'}<br>Last checked: ${rec.lastVisited || 'Not set'}<br>Weeks out: ${weeks === null ? 'N/A' : weeks}<br>Notes: ${rec.notes || 'None'}`;
+      notes.value = rec.notes || '';
+    }
+
+    function selectFeature(type, feature, layer) {
+      clearSelectionLook();
+      selected = { type, feature, layer };
+      applySelectedLook(type, layer, feature);
+      updateSelectedInfo();
+    }
+
+    function addGeoJsonLayer(fc, type) {
+      if (layers[type]) map.removeLayer(layers[type]);
+      layers[type] = L.geoJSON(fc, {
+        style: (feature) => type === 'zips' ? zipStyle() : cityStyle(feature),
+        onEachFeature: (feature, layer) => {
+          layer.on('click', () => selectFeature(type, feature, layer));
+          layer.on('mouseover', () => {
+            layer.setStyle({ weight: type === 'zips' ? Number(state.settings.zipWeight || 4) + .8 : 2.2 });
+          });
+          layer.on('mouseout', () => {
+            if (selected && selected.layer === layer) applySelectedLook(type, layer, feature);
+            else if (type === 'zips') layer.setStyle(zipStyle());
+            else layer.setStyle(cityStyle(feature));
+          });
+        }
+      }).addTo(map);
+    }
+
+    async function loadRealData() {
+      try {
+        setStatus('Loading ZIP boundaries...');
+        const zipData = await fetchArcGisAll(
+          'https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_ZIP_Code_Areas_anaylsis/FeatureServer/0',
+          'ZIP_CODE,PO_NAME,STATE',
+          "STATE='CA'",
+          1000
+        );
+        const norcalZips = {
+          type: 'FeatureCollection',
+          features: zipData.features.filter(northOfAngelsCamp)
+        };
+        norcalZips.features.forEach(f => { f.properties = { ...f.properties, ZIP_CODE: String(f.properties.ZIP_CODE || '').slice(0,5) }; });
+        addGeoJsonLayer(norcalZips, 'zips');
+
+        setStatus('Loading incorporated cities...');
+        const cityData = await fetchArcGisAll(
+          'https://egis.fire.ca.gov/arcgis/rest/services/FRAP/Incorp/FeatureServer/0',
+          'CITY,COUNTY',
+          '1=1',
+          1000
+        );
+        cityData.features = cityData.features.filter(northOfAngelsCamp).map(f => ({
+          ...f,
+          properties: { ...f.properties, kind: 'city' }
+        }));
+
+        setStatus('Loading census-designated places...');
+        const cdpData = await fetchArcGisAll(
+          'https://services3.arcgis.com/uknczv4rpevve42E/arcgis/rest/services/California_Census_Designated_Places_%28CDPs%29/FeatureServer/1',
+          'NAME,GEOID',
+          '1=1',
+          1000
+        );
+        cdpData.features = cdpData.features.filter(northOfAngelsCamp).map(f => ({
+          ...f,
+          properties: { ...f.properties, kind: 'cdp' }
+        }));
+
+        const combinedCities = { type: 'FeatureCollection', features: [...cityData.features, ...cdpData.features] };
+        addGeoJsonLayer(combinedCities, 'cities');
+
+        const bounds = L.featureGroup([layers.zips, layers.cities]).getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds, { padding: [18, 18] });
+        setStatus(`Loaded ${norcalZips.features.length} ZIP areas and ${combinedCities.features.length} city/CDP boundaries.`);
+      } catch (err) {
+        console.error(err);
+        setStatus('Could not load live data. This can happen if the data service is temporarily unavailable.');
+        alert('Could not load live data right now. Try again in a moment.');
+      }
+    }
+
+    function setSelectedCityDate(dateStr) {
+      if (!selected || selected.type !== 'cities') return;
+      const id = getCityId(selected.feature);
+      state.cities[id] = state.cities[id] || {};
+      state.cities[id].lastVisited = dateStr;
+      selected.layer.setStyle(cityStyle(selected.feature));
+      applySelectedLook('cities', selected.layer, selected.feature);
+      saveState();
+      updateSelectedInfo();
+    }
+
+    function saveSelectedCityNotes(text) {
+      if (!selected || selected.type !== 'cities') return;
+      const id = getCityId(selected.feature);
+      state.cities[id] = state.cities[id] || {};
+      state.cities[id].notes = text;
+      saveState();
+      updateSelectedInfo();
+    }
+
+    function exportBackup() {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'norcal-city-check-backup.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function importBackup(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const incoming = JSON.parse(reader.result);
+          Object.assign(state, incoming);
+          saveState();
+          document.getElementById('zipFillMode').value = state.settings.zipFillMode || 'transparent';
+          document.getElementById('zipWeight').value = state.settings.zipWeight || 4;
+          if (layers.zips) layers.zips.setStyle(() => zipStyle());
+          if (layers.cities) layers.cities.setStyle((f) => cityStyle(f));
+          selected = null;
+          updateSelectedInfo();
+          setStatus('Backup loaded.');
+        } catch {
+          alert('Backup file could not be read.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function searchMap(term) {
+      const q = (term || '').trim().toLowerCase();
+      if (!q) return;
+      const groups = ['cities', 'zips'];
+      for (const type of groups) {
+        const group = layers[type];
+        if (!group) continue;
+        let hit = null;
+        group.eachLayer(layer => {
+          if (hit) return;
+          const p = layer.feature.properties || {};
+          const text = [p.CITY, p.NAME, p.ZIP_CODE, p.PO_NAME, p.GEOID].filter(Boolean).join(' ').toLowerCase();
+          if (text.includes(q)) hit = layer;
+        });
+        if (hit) {
+          map.fitBounds(hit.getBounds(), { padding: [24, 24] });
+          selectFeature(type, hit.feature, hit);
+          return;
+        }
+      }
+      alert('No match found.');
+    }
+
+    document.getElementById('loadBtn').addEventListener('click', loadRealData);
+    document.getElementById('zipFillMode').addEventListener('change', (e) => {
+      state.settings.zipFillMode = e.target.value;
+      saveState();
+      if (layers.zips) layers.zips.setStyle(() => zipStyle());
+      updateSelectedInfo();
+    });
+    document.getElementById('zipWeight').addEventListener('change', (e) => {
+      state.settings.zipWeight = Number(e.target.value);
+      saveState();
+      if (layers.zips) layers.zips.setStyle(() => zipStyle());
+      if (selected && selected.type === 'zips') applySelectedLook('zips', selected.layer, selected.feature);
+      updateSelectedInfo();
+    });
+    document.getElementById('markTodayBtn').addEventListener('click', () => setSelectedCityDate(todayString()));
+    document.getElementById('setDateBtn').addEventListener('click', () => {
+      const d = document.getElementById('visitDate').value;
+      if (!d) return alert('Choose a date first.');
+      setSelectedCityDate(d);
+    });
+    document.getElementById('saveNotesBtn').addEventListener('click', () => saveSelectedCityNotes(document.getElementById('notesInput').value.trim()));
+    document.getElementById('saveBtn').addEventListener('click', () => { saveState(); alert('Saved on this device.'); });
+    document.getElementById('exportBtn').addEventListener('click', exportBackup);
+    document.getElementById('backupFile').addEventListener('change', (e) => { if (e.target.files[0]) importBackup(e.target.files[0]); });
+    document.getElementById('searchBtn').addEventListener('click', () => searchMap(document.getElementById('searchInput').value));
+    document.getElementById('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') searchMap(e.target.value); });
+
+    document.getElementById('zipFillMode').value = state.settings.zipFillMode || 'transparent';
+    document.getElementById('zipWeight').value = state.settings.zipWeight || 4;
+    updateSelectedInfo();
+  </script>
+
+<script>if ("serviceWorker" in navigator) { window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js")); }</script>
 </body>
 </html>

@@ -1,9 +1,16 @@
 {
-  "name": "NorCal Area Manager",
-  "short_name": "NorCal Map",
+  "name": "NorCal Territory Tracker",
+  "short_name": "NorCal Tracker",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#f3f6fb",
+  "background_color": "#ffffff",
   "theme_color": "#2563eb",
-  "icons": []
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
 }
