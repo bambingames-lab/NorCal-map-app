@@ -50,7 +50,6 @@ button{
 <body>
 
 <div class="panel">
-
 <b>ZIP Style</b>
 <select id="zipFill">
 <option value="none">Transparent</option>
@@ -69,9 +68,8 @@ button{
 <div style="background:#b91c1c"></div>
 <div style="background:#ef4444"></div>
 <div style="background:#facc15"></div>
-<div style="background:#86efac"></div>
+<div style="background:#22c55e"></div>
 </div>
-
 </div>
 
 <div id="map"></div>
@@ -86,47 +84,56 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 let state = JSON.parse(localStorage.getItem("mapState")) || {};
 let selected = null;
 
-function weeks(d){
-  return (Date.now()-new Date(d))/(1000*60*60*24*7);
-}
+function getColor(date){
+  if(!date) return "#e5e7eb";
 
-function color(date){
-  if(!date) return "#ccc";
-  let w = weeks(date);
+  let weeks = (Date.now() - new Date(date)) / (1000*60*60*24*7);
 
-  if(w<2) return "#b91c1c";
-  if(w<5) return "#ef4444";
-  if(w<9) return "#facc15";
-  return "#86efac";
+  if(weeks < 2) return "#b91c1c";
+  if(weeks < 5) return "#ef4444";
+  if(weeks < 9) return "#facc15";
+  return "#22c55e";
 }
 
 function zipStyle(){
   return {
-    color:"#000",
-    weight:5,
-    fillOpacity: document.getElementById("zipFill").value=="gray"?0.2:0
+    color:"#2563eb",
+    weight:6,
+    opacity:1,
+    fillColor:"#94a3b8",
+    fillOpacity: document.getElementById("zipFill").value=="gray"?0.15:0
   };
 }
 
-fetch("https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/ZIP_Codes/FeatureServer/0/query?where=1=1&outFields=*&outSR=4326&f=geojson")
+function cityStyle(feature){
+  return {
+    color:"#111",
+    weight:2,
+    fillColor:getColor(state[feature.properties.name]),
+    fillOpacity:0.65
+  };
+}
+
+fetch("https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json")
 .then(r=>r.json())
 .then(data=>{
   zips = L.geoJSON(data,{style:zipStyle}).addTo(map);
+  zips.bringToFront();
 });
 
-fetch("https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/California_Cities/FeatureServer/0/query?where=1=1&outFields=*&outSR=4326&f=geojson")
+fetch("https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/california-cities.geojson")
 .then(r=>r.json())
 .then(data=>{
   cities = L.geoJSON(data,{
-    style:f=>({
-      fillColor:color(state[f.properties.NAME]),
-      fillOpacity:.6,
-      color:"#111"
-    }),
+    style:cityStyle,
     onEachFeature:(f,l)=>{
-      l.on("click",()=>{selected = f.properties.NAME;});
+      l.on("click",()=>{
+        selected = f.properties.name;
+        l.setStyle({weight:4,color:"#000"});
+      });
     }
   }).addTo(map);
+  cities.bringToFront();
 });
 
 function markToday(){
@@ -152,9 +159,8 @@ document.getElementById("zipFill").onchange=()=>{
 
 document.getElementById("search").oninput=e=>{
   let val=e.target.value.toLowerCase();
-
   cities.eachLayer(l=>{
-    if(l.feature.properties.NAME.toLowerCase().includes(val)){
+    if(l.feature.properties.name.toLowerCase().includes(val)){
       map.fitBounds(l.getBounds());
     }
   });
