@@ -1,130 +1,394 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NorCal Territory v2</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<style>
-body{margin:0;font-family:Arial;}
-#map{height:100vh;}
-.panel{
-position:absolute;top:10px;left:10px;
-background:white;padding:12px;border-radius:12px;
-z-index:1000;width:260px;
-box-shadow:0 8px 20px rgba(0,0,0,0.2);
-}
-button,input,select{width:100%;margin-top:6px;padding:8px;border-radius:8px;}
-button{background:#2563eb;color:white;border:none;}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NorCal Territory Manager</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
+    #map { height:100vh; width:100vw; background:#eef2f7; }
+
+    .panel {
+      position:absolute;
+      top:12px;
+      left:12px;
+      z-index:1000;
+      width:290px;
+      max-width:calc(100vw - 24px);
+      background:rgba(255,255,255,0.97);
+      border-radius:14px;
+      box-shadow:0 10px 24px rgba(0,0,0,0.18);
+      padding:12px;
+      border:1px solid #dbe4ef;
+    }
+
+    .panel h1 {
+      font-size:20px;
+      margin:0 0 8px;
+    }
+
+    .small {
+      font-size:12px;
+      color:#64748b;
+      line-height:1.35;
+      margin-bottom:10px;
+    }
+
+    .section {
+      border:1px solid #e5e7eb;
+      border-radius:12px;
+      padding:10px;
+      margin-top:10px;
+      background:#fff;
+    }
+
+    .section-title {
+      font-size:14px;
+      font-weight:700;
+      margin-bottom:8px;
+    }
+
+    label {
+      display:block;
+      font-size:12px;
+      font-weight:700;
+      margin:8px 0 4px;
+    }
+
+    input, select, button {
+      width:100%;
+      box-sizing:border-box;
+      border-radius:10px;
+      font-size:14px;
+    }
+
+    input, select {
+      border:1px solid #d1d5db;
+      padding:10px;
+      background:#fff;
+    }
+
+    button {
+      border:none;
+      padding:11px 12px;
+      background:#2563eb;
+      color:#fff;
+      font-weight:700;
+      margin-top:8px;
+      cursor:pointer;
+    }
+
+    button.secondary {
+      background:#eef2ff;
+      color:#111827;
+    }
+
+    .legend {
+      display:grid;
+      grid-template-columns:repeat(5, 1fr);
+      height:16px;
+      overflow:hidden;
+      border-radius:999px;
+      border:1px solid #d1d5db;
+      margin-top:8px;
+    }
+
+    .legend div:nth-child(1){background:#b91c1c;}
+    .legend div:nth-child(2){background:#ef4444;}
+    .legend div:nth-child(3){background:#f59e0b;}
+    .legend div:nth-child(4){background:#fde047;}
+    .legend div:nth-child(5){background:#22c55e;}
+
+    .legend-labels {
+      display:flex;
+      justify-content:space-between;
+      font-size:11px;
+      color:#64748b;
+      margin-top:5px;
+    }
+
+    .stats {
+      font-size:13px;
+      line-height:1.45;
+      background:#f8fafc;
+      border:1px solid #e2e8f0;
+      border-radius:10px;
+      padding:10px;
+    }
+
+    .leaflet-popup-content button,
+    .leaflet-popup-content input {
+      width:100%;
+      box-sizing:border-box;
+      margin-top:6px;
+      border-radius:8px;
+      padding:8px;
+      font-size:13px;
+    }
+
+    .leaflet-popup-content button {
+      border:none;
+      background:#2563eb;
+      color:white;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .leaflet-popup-content .secondary {
+      background:#eef2ff;
+      color:#111827;
+    }
+
+    @media (max-width:700px) {
+      .panel {
+        width:calc(100vw - 24px);
+      }
+    }
+  </style>
 </head>
 <body>
+  <div class="panel">
+    <h1>NorCal Territory Manager</h1>
+    <div class="small">ZIPs are the reference layer. Larger city zones are the editable work areas. Zones turn green at about 3 months out.</div>
 
-<div class="panel">
-<b>Territory Manager</b>
+    <div class="section">
+      <div class="section-title">ZIP appearance</div>
+      <label for="zipFill">ZIP fill</label>
+      <select id="zipFill">
+        <option value="none">Transparent</option>
+        <option value="gray">Light gray</option>
+      </select>
+      <label for="zipWeight">ZIP line thickness</label>
+      <input type="range" id="zipWeight" min="2" max="6" step="0.5" value="2.5">
+    </div>
 
-<label>ZIP Fill</label>
-<select id="zipFill">
-<option value="none">Transparent</option>
-<option value="gray">Gray</option>
-</select>
+    <div class="section">
+      <div class="section-title">Quick actions</div>
+      <button id="markTodayBtn">Mark selected zone today</button>
+      <input type="date" id="date">
+      <button class="secondary" id="setDateBtn">Set selected zone date</button>
+    </div>
 
-<button onclick="markToday()">Mark Today</button>
-<input type="date" id="date">
-<button onclick="setDate()">Set Date</button>
-</div>
+    <div class="section">
+      <div class="section-title">Legend</div>
+      <div class="legend">
+        <div></div><div></div><div></div><div></div><div></div>
+      </div>
+      <div class="legend-labels">
+        <span>Recent</span>
+        <span>~ 3 months</span>
+      </div>
+    </div>
 
-<div id="map"></div>
+    <div class="section">
+      <div class="section-title">Coverage</div>
+      <div id="stats" class="stats">No zone selected yet.</div>
+    </div>
+  </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
+  <div id="map"></div>
 
-const map = L.map('map').setView([38.8,-121.5],7);
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const STORAGE_KEY = "norcal-territory-manager-v3";
+    const map = L.map("map").setView([38.8, -121.5], 7);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
 
-let state = JSON.parse(localStorage.getItem("zones")) || {};
-let selected = null;
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+      settings: {
+        zipFill: "none",
+        zipWeight: 2.5
+      },
+      zones: {}
+    };
 
-function color(date){
-if(!date) return "#ccc";
-let w = (Date.now()-new Date(date))/(1000*60*60*24*7);
-if(w<2) return "#b91c1c";
-if(w<5) return "#ef4444";
-if(w<9) return "#facc15";
-return "#22c55e";
-}
+    let selected = null;
+    let zipLayer = null;
+    let zoneLayers = [];
 
-// ZIP LAYER (clean + bold)
-let zips;
-fetch("https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json")
-.then(r=>r.json())
-.then(data=>{
-zips = L.geoJSON(data,{
-style:{
-color:"#000",
-weight:2,
-fillOpacity:0
-}
-}).addTo(map);
-});
+    const cities = [
+      {name:"Sacramento", coords:[[38.05,-122.20],[39.00,-120.90]]},
+      {name:"San Francisco", coords:[[37.45,-122.75],[38.05,-122.15]]},
+      {name:"San Jose", coords:[[36.95,-122.20],[37.65,-121.35]]},
+      {name:"Oakland", coords:[[37.50,-122.45],[38.05,-121.80]]},
+      {name:"Stockton", coords:[[37.55,-121.80],[38.35,-120.85]]},
+      {name:"Modesto", coords:[[37.15,-121.45],[37.95,-120.50]]},
+      {name:"Fresno", coords:[[36.35,-120.65],[37.20,-119.40]]},
+      {name:"Chico", coords:[[39.25,-122.10],[40.10,-121.05]]},
+      {name:"Redding", coords:[[40.20,-122.80],[41.15,-121.65]]},
+      {name:"Santa Rosa", coords:[[38.10,-123.15],[38.95,-122.15]]},
+      {name:"Salinas", coords:[[36.25,-122.00],[37.00,-121.05]]},
+      {name:"Vacaville", coords:[[38.10,-122.35],[38.75,-121.45]]}
+    ];
 
-// City Zones (expanded)
-const cities = [
-{name:"Sacramento", coords:[[38.2,-122.2],[39.0,-121.0]]},
-{name:"San Francisco", coords:[[37.5,-122.8],[38.0,-122.2]]},
-{name:"San Jose", coords:[[37.0,-122.2],[37.6,-121.5]]},
-{name:"Oakland", coords:[[37.6,-122.4],[38.0,-121.9]]},
-{name:"Stockton", coords:[[37.7,-121.7],[38.3,-120.9]]},
-{name:"Modesto", coords:[[37.3,-121.4],[37.9,-120.6]]},
-{name:"Fresno", coords:[[36.5,-120.5],[37.2,-119.6]]},
-{name:"Chico", coords:[[39.4,-122.0],[40.1,-121.2]]},
-{name:"Redding", coords:[[40.3,-122.7],[41.1,-121.8]]},
-{name:"Santa Rosa", coords:[[38.2,-123.1],[38.9,-122.3]]},
-{name:"Salinas", coords:[[36.4,-121.9],[36.9,-121.2]]},
-{name:"Vacaville", coords:[[38.2,-122.2],[38.6,-121.6]]}
-];
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
 
-cities.forEach(c=>{
-let poly = L.rectangle(c.coords,{
-color:"#000",
-weight:2,
-fillColor:color(state[c.name]),
-fillOpacity:0.6
-}).addTo(map);
+    function weeksSince(dateStr) {
+      if (!dateStr) return null;
+      const then = new Date(dateStr + "T00:00:00");
+      return Math.max(0, (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24 * 7));
+    }
 
-poly.on("click",()=>{
-selected = c.name;
-poly.setStyle({weight:4});
-});
-});
+    function zoneColor(dateStr) {
+      if (!dateStr) return "#d1d5db";
+      const w = weeksSince(dateStr);
+      if (w < 2) return "#b91c1c";
+      if (w < 5) return "#ef4444";
+      if (w < 9) return "#f59e0b";
+      if (w < 12) return "#fde047";
+      return "#22c55e";
+    }
 
-function markToday(){
-if(!selected) return;
-state[selected] = new Date().toISOString().split("T")[0];
-save();
-}
+    function zipStyle() {
+      return {
+        color: "#111827",
+        weight: Number(state.settings.zipWeight || 2.5),
+        opacity: 0.9,
+        fillColor: "#d1d5db",
+        fillOpacity: state.settings.zipFill === "gray" ? 0.13 : 0
+      };
+    }
 
-function setDate(){
-if(!selected) return;
-state[selected] = document.getElementById("date").value;
-save();
-}
+    function zoneStyle(name) {
+      return {
+        color: "#000000",
+        weight: selected === name ? 4 : 2,
+        fillColor: zoneColor(state.zones[name]),
+        fillOpacity: selected === name ? 0.72 : 0.58
+      };
+    }
 
-function save(){
-localStorage.setItem("zones", JSON.stringify(state));
-location.reload();
-}
+    function updateStats() {
+      const total = cities.length;
+      const checked = cities.filter(c => !!state.zones[c.name]).length;
+      const overdue = cities.filter(c => {
+        const w = weeksSince(state.zones[c.name]);
+        return w !== null && w >= 12;
+      }).length;
 
-// ZIP fill toggle
-document.getElementById("zipFill").onchange=()=>{
-let val = document.getElementById("zipFill").value;
-zips.setStyle({
-color:"#000",
-weight:2,
-fillOpacity: val==="gray"?0.15:0
-});
-};
+      const selectedText = selected
+        ? `<strong>Selected:</strong> ${selected}<br><strong>Last visited:</strong> ${state.zones[selected] || "Not set"}`
+        : "No zone selected yet.";
 
-</script>
+      document.getElementById("stats").innerHTML =
+        selectedText +
+        `<br><br><strong>Zones tracked:</strong> ${checked}/${total}` +
+        `<br><strong>Over 3 months:</strong> ${overdue}`;
+    }
+
+    function redrawZones() {
+      zoneLayers.forEach(item => {
+        item.layer.setStyle(zoneStyle(item.name));
+      });
+      updateStats();
+      saveState();
+    }
+
+    function popupHtml(name) {
+      const last = state.zones[name] || "Not set";
+      return `
+        <div style="min-width:180px">
+          <strong>${name}</strong><br>
+          Last visited: ${last}<br>
+          <button onclick="popupMarkToday()">Mark Today</button>
+          <button class="secondary" onclick="popupYesterday()">Mark Yesterday</button>
+          <input type="date" id="popupDate">
+          <button onclick="popupSaveDate()">Save Date</button>
+        </div>
+      `;
+    }
+
+    window.popupMarkToday = function () {
+      if (!selected) return;
+      state.zones[selected] = new Date().toISOString().split("T")[0];
+      redrawZones();
+      map.closePopup();
+    };
+
+    window.popupYesterday = function () {
+      if (!selected) return;
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      state.zones[selected] = d.toISOString().split("T")[0];
+      redrawZones();
+      map.closePopup();
+    };
+
+    window.popupSaveDate = function () {
+      if (!selected) return;
+      const val = document.getElementById("popupDate").value;
+      if (!val) return;
+      state.zones[selected] = val;
+      redrawZones();
+      map.closePopup();
+    };
+
+    function drawZones() {
+      zoneLayers.forEach(item => map.removeLayer(item.layer));
+      zoneLayers = [];
+
+      cities.forEach(c => {
+        const layer = L.rectangle(c.coords, zoneStyle(c.name)).addTo(map);
+        layer.on("click", () => {
+          selected = c.name;
+          redrawZones();
+          layer.bindPopup(popupHtml(c.name)).openPopup();
+        });
+        zoneLayers.push({ name: c.name, layer });
+      });
+    }
+
+    function loadZipLayer() {
+      fetch("https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json")
+        .then(r => r.json())
+        .then(data => {
+          if (zipLayer) map.removeLayer(zipLayer);
+          zipLayer = L.geoJSON(data, { style: zipStyle }).addTo(map);
+          zipLayer.bringToBack();
+        })
+        .catch(() => {
+          console.log("ZIP layer could not load.");
+        });
+    }
+
+    document.getElementById("zipFill").value = state.settings.zipFill || "none";
+    document.getElementById("zipWeight").value = state.settings.zipWeight || 2.5;
+
+    document.getElementById("zipFill").addEventListener("change", (e) => {
+      state.settings.zipFill = e.target.value;
+      saveState();
+      if (zipLayer) zipLayer.setStyle(zipStyle);
+    });
+
+    document.getElementById("zipWeight").addEventListener("input", (e) => {
+      state.settings.zipWeight = Number(e.target.value);
+      saveState();
+      if (zipLayer) zipLayer.setStyle(zipStyle);
+    });
+
+    document.getElementById("markTodayBtn").addEventListener("click", () => {
+      if (!selected) return;
+      state.zones[selected] = new Date().toISOString().split("T")[0];
+      redrawZones();
+    });
+
+    document.getElementById("setDateBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const d = document.getElementById("date").value;
+      if (!d) return;
+      state.zones[selected] = d;
+      redrawZones();
+    });
+
+    loadZipLayer();
+    drawZones();
+    updateStats();
+  </script>
 </body>
 </html>
