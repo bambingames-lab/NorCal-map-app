@@ -2,102 +2,55 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>NorCal Map Pro V2</title>
-  <meta name="theme-color" content="#2563eb" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NorCal Territory Map</title>
   <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app-shell">
-    <aside class="sidebar" id="sidebar">
-      <div class="brand-row">
-        <div>
-          <h1>NorCal Map Pro</h1>
-          <p class="muted">ZIPs, towns, and township aging in one phone-friendly app.</p>
-        </div>
-        <button class="ghost icon-only" id="toggleSidebarBtn" title="Hide panel">✕</button>
-      </div>
+    <aside class="panel">
+      <h1>NorCal Territory Map</h1>
+      <p class="intro">
+        ZIPs are your bold base layer. Towns are tracked separately and colored by how recently you visited them.
+      </p>
 
       <section class="card">
-        <h2>GeoJSON Uploads</h2>
-        <label>ZIP boundaries<input type="file" id="zipFile" accept=".json,.geojson,application/geo+json,application/json" /></label>
-        <label>Town boundaries<input type="file" id="townFile" accept=".json,.geojson,application/geo+json,application/json" /></label>
-        <label>Township boundaries<input type="file" id="townshipFile" accept=".json,.geojson,application/geo+json,application/json" /></label>
-        <div class="button-row two-up">
-          <button id="loadDemoBtn">Load demo data</button>
-          <button class="ghost" id="clearLayersBtn">Clear layers</button>
-        </div>
+        <h2>Bundled starter data</h2>
+        <button id="loadDemoBtn">Load bundled ZIPs + towns</button>
+        <p class="small">
+          These included GeoJSON files are starter/demo shapes for Northern California. Replace them anytime with your own files.
+        </p>
       </section>
 
       <section class="card">
-        <h2>Editing</h2>
-        <label>Mode
-          <select id="modeSelect">
-            <option value="zip">ZIPs</option>
-            <option value="town">Towns</option>
-            <option value="township">Townships</option>
-          </select>
-        </label>
-        <label>Color for ZIPs/Towns
-          <input type="color" id="colorPicker" value="#2563eb" />
-        </label>
-        <div class="button-row two-up">
-          <button id="markTodayBtn">Mark township today</button>
-          <button class="ghost" id="setDateBtn">Set custom date</button>
-        </div>
-        <input type="date" id="dateInput" />
+        <h2>Upload your own GeoJSON</h2>
+        <label>ZIP GeoJSON</label>
+        <input type="file" id="zipFile" accept=".json,.geojson" />
+        <label>Town GeoJSON</label>
+        <input type="file" id="townFile" accept=".json,.geojson" />
       </section>
 
       <section class="card">
-        <h2>Search & Filters</h2>
-        <label>Search by name, ID, ZIP, GEOID
-          <input type="text" id="searchInput" placeholder="Search feature..." />
-        </label>
-        <label>County filter
-          <select id="countyFilter">
-            <option value="">All counties</option>
-          </select>
-        </label>
-        <div class="button-row two-up">
-          <button class="ghost" id="clearSearchBtn">Clear search</button>
-          <button class="ghost" id="zoomRegionBtn">Zoom NorCal</button>
-        </div>
+        <h2>ZIP appearance</h2>
+        <label>ZIP fill</label>
+        <select id="zipFillMode">
+          <option value="lightgray">Light gray</option>
+          <option value="transparent">Transparent</option>
+        </select>
+        <p class="small">ZIP outlines stay bold either way.</p>
       </section>
 
       <section class="card">
-        <h2>Layers</h2>
-        <label class="checkbox"><input type="checkbox" id="zipVisible" checked /> ZIPs visible</label>
-        <label class="checkbox"><input type="checkbox" id="townVisible" checked /> Towns visible</label>
-        <label class="checkbox"><input type="checkbox" id="townshipVisible" checked /> Townships visible</label>
-      </section>
+        <h2>Town visit tracking</h2>
+        <button id="markTodayBtn">Mark selected town today</button>
+        <label>Or set a specific date</label>
+        <input type="date" id="visitDate" />
+        <button class="secondary" id="setDateBtn">Apply visit date</button>
 
-      <section class="card">
-        <h2>Selected Area</h2>
-        <div id="selectedInfo" class="selected-empty">Nothing selected yet.</div>
-        <label>Rep / owner
-          <input type="text" id="repInput" placeholder="Assign a rep or owner" />
-        </label>
-        <label>Notes
-          <textarea id="notesInput" rows="4" placeholder="Add notes for this area"></textarea>
-        </label>
-        <div class="button-row two-up">
-          <button id="saveNotesBtn">Save details</button>
-          <button class="ghost" id="clearSelectionBtn">Clear selection</button>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Township Aging Legend</h2>
-        <div class="legend-bar">
-          <span style="background:#991b1b"></span>
-          <span style="background:#dc2626"></span>
-          <span style="background:#f87171"></span>
-          <span style="background:#fde68a"></span>
-          <span style="background:#d9f99d"></span>
-          <span style="background:#86efac"></span>
-        </div>
+        <div class="legend"></div>
         <div class="legend-labels">
           <span>Recent</span>
           <span>Longest out</span>
@@ -105,35 +58,34 @@
       </section>
 
       <section class="card">
-        <h2>Dashboard</h2>
-        <div class="stats-grid" id="statsGrid">
-          <div><strong>0</strong><span>ZIPs</span></div>
-          <div><strong>0</strong><span>Towns</span></div>
-          <div><strong>0</strong><span>Townships</span></div>
-          <div><strong>0</strong><span>Overdue 8+ wks</span></div>
+        <h2>Search</h2>
+        <div class="row">
+          <input type="text" id="searchInput" placeholder="Town or ZIP" />
+          <button id="searchBtn">Find</button>
         </div>
       </section>
 
       <section class="card">
-        <h2>Save & Backup</h2>
-        <div class="button-row two-up">
-          <button id="saveLocalBtn">Save on device</button>
-          <button class="ghost" id="loadLocalBtn">Load saved</button>
-        </div>
-        <div class="button-row two-up">
-          <button id="exportProjectBtn">Export project</button>
-          <label class="button-like ghost">
-            Import project
-            <input type="file" id="importProjectFile" accept=".json,application/json" hidden />
-          </label>
-        </div>
+        <h2>Notes</h2>
+        <textarea id="notesInput" placeholder="Notes for selected town"></textarea>
+        <button class="secondary" id="notesSaveBtn">Save notes</button>
+      </section>
+
+      <section class="card">
+        <h2>Selection</h2>
+        <div id="selectedInfo" class="info-box">Nothing selected yet.</div>
+      </section>
+
+      <section class="card">
+        <h2>Save / backup</h2>
+        <button id="saveBtn">Save on this device</button>
+        <button class="secondary" id="exportBtn">Export backup</button>
+        <label>Import backup</label>
+        <input type="file" id="backupFile" accept=".json" />
       </section>
     </aside>
 
-    <main class="map-wrap">
-      <button class="floating-panel-btn" id="openSidebarBtn">☰ Panel</button>
-      <div id="map"></div>
-    </main>
+    <main id="map"></main>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

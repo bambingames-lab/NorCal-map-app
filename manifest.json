@@ -1,8 +1,9 @@
 {
-  "name": "NorCal Map Pro V2",
+  "name": "NorCal Territory Map",
   "short_name": "NorCal Map",
-  "start_url": "./index.html",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#eff6ff",
-  "theme_color": "#2563eb"
+  "background_color": "#f3f6fb",
+  "theme_color": "#2563eb",
+  "icons": []
 }
