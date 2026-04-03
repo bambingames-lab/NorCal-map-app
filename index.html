@@ -1,66 +1,52 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>NorCal Territory Map</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#2563eb" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-shell">
+  <div id="app">
     <aside class="panel">
       <h1>NorCal Territory Map</h1>
-      <p class="intro">
-        ZIPs are your bold base layer. Towns are tracked separately and colored by how recently you visited them.
-      </p>
+      <p class="muted">ZIPs are the base layer. Towns are tracked separately by last visit date.</p>
 
       <section class="card">
-        <h2>Bundled starter data</h2>
-        <button id="loadDemoBtn">Load bundled ZIPs + towns</button>
-        <p class="small">
-          These included GeoJSON files are starter/demo shapes for Northern California. Replace them anytime with your own files.
-        </p>
-      </section>
-
-      <section class="card">
-        <h2>Upload your own GeoJSON</h2>
-        <label>ZIP GeoJSON</label>
-        <input type="file" id="zipFile" accept=".json,.geojson" />
-        <label>Town GeoJSON</label>
-        <input type="file" id="townFile" accept=".json,.geojson" />
+        <h2>Load real data</h2>
+        <button id="loadOfficialBtn">Load Northern California data</button>
+        <p class="muted small">Loads California ZIP boundaries plus incorporated cities and Census-designated places, then keeps only areas at or north of Angels Camp.</p>
+        <div id="status" class="status">Ready.</div>
       </section>
 
       <section class="card">
         <h2>ZIP appearance</h2>
-        <label>ZIP fill</label>
+        <label for="zipFillMode">ZIP fill</label>
         <select id="zipFillMode">
           <option value="lightgray">Light gray</option>
           <option value="transparent">Transparent</option>
         </select>
-        <p class="small">ZIP outlines stay bold either way.</p>
       </section>
 
       <section class="card">
-        <h2>Town visit tracking</h2>
+        <h2>Town visits</h2>
         <button id="markTodayBtn">Mark selected town today</button>
-        <label>Or set a specific date</label>
-        <input type="date" id="visitDate" />
-        <button class="secondary" id="setDateBtn">Apply visit date</button>
-
-        <div class="legend"></div>
-        <div class="legend-labels">
-          <span>Recent</span>
-          <span>Longest out</span>
+        <label for="visitDate">Set specific visit date</label>
+        <input type="date" id="visitDate">
+        <button id="setDateBtn" class="secondary">Apply visit date</button>
+        <div class="legend">
+          <div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div>
         </div>
+        <p class="muted small">Recent visits show red. Older visits move toward light green.</p>
       </section>
 
       <section class="card">
         <h2>Search</h2>
         <div class="row">
-          <input type="text" id="searchInput" placeholder="Town or ZIP" />
+          <input type="text" id="searchInput" placeholder="Town or ZIP">
           <button id="searchBtn">Find</button>
         </div>
       </section>
@@ -68,27 +54,31 @@
       <section class="card">
         <h2>Notes</h2>
         <textarea id="notesInput" placeholder="Notes for selected town"></textarea>
-        <button class="secondary" id="notesSaveBtn">Save notes</button>
+        <button id="saveNotesBtn" class="secondary">Save notes</button>
       </section>
 
       <section class="card">
         <h2>Selection</h2>
-        <div id="selectedInfo" class="info-box">Nothing selected yet.</div>
+        <div id="selectedInfo" class="infoBox">Nothing selected yet.</div>
       </section>
 
       <section class="card">
-        <h2>Save / backup</h2>
+        <h2>Backup</h2>
         <button id="saveBtn">Save on this device</button>
-        <button class="secondary" id="exportBtn">Export backup</button>
-        <label>Import backup</label>
-        <input type="file" id="backupFile" accept=".json" />
+        <button id="exportStateBtn" class="secondary">Export activity backup</button>
+        <button id="exportGeojsonBtn" class="secondary">Export filtered GeoJSON</button>
+        <label for="importStateFile">Import activity backup</label>
+        <input type="file" id="importStateFile" accept=".json">
       </section>
     </aside>
 
-    <main id="map"></main>
+    <main>
+      <div id="map"></div>
+    </main>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
