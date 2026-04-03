@@ -2,170 +2,129 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NorCal Territory Tracker</title>
-
+<title>NorCal Territory v2</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-
 <style>
-body { margin:0; font-family: Arial; }
-#map { height:100vh; }
-
+body{margin:0;font-family:Arial;}
+#map{height:100vh;}
 .panel{
-  position:absolute;
-  top:10px;
-  left:10px;
-  background:white;
-  padding:12px;
-  border-radius:12px;
-  width:280px;
-  z-index:1000;
-  box-shadow:0 8px 20px rgba(0,0,0,0.2);
+position:absolute;top:10px;left:10px;
+background:white;padding:12px;border-radius:12px;
+z-index:1000;width:260px;
+box-shadow:0 8px 20px rgba(0,0,0,0.2);
 }
-
-button, select, input{
-  width:100%;
-  margin-top:6px;
-  padding:8px;
-  border-radius:8px;
-}
-
-button{
-  background:#2563eb;
-  color:white;
-  border:none;
-}
-
-.legend{
-  display:flex;
-  height:14px;
-  margin-top:10px;
-  border-radius:999px;
-  overflow:hidden;
-}
-
-.legend div{flex:1;}
+button,input,select{width:100%;margin-top:6px;padding:8px;border-radius:8px;}
+button{background:#2563eb;color:white;border:none;}
 </style>
 </head>
-
 <body>
 
 <div class="panel">
-<b>ZIP Style</b>
+<b>Territory Manager</b>
+
+<label>ZIP Fill</label>
 <select id="zipFill">
 <option value="none">Transparent</option>
-<option value="gray">Light Gray</option>
+<option value="gray">Gray</option>
 </select>
 
-<button onclick="markToday()">Mark City Today</button>
-
+<button onclick="markToday()">Mark Today</button>
 <input type="date" id="date">
-
 <button onclick="setDate()">Set Date</button>
-
-<input placeholder="Search city..." id="search">
-
-<div class="legend">
-<div style="background:#b91c1c"></div>
-<div style="background:#ef4444"></div>
-<div style="background:#facc15"></div>
-<div style="background:#22c55e"></div>
-</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-const map = L.map('map').setView([39.4,-121.6],7);
+
+const map = L.map('map').setView([38.8,-121.5],7);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-let state = JSON.parse(localStorage.getItem("mapState")) || {};
+let state = JSON.parse(localStorage.getItem("zones")) || {};
 let selected = null;
 
-function getColor(date){
-  if(!date) return "#e5e7eb";
-
-  let weeks = (Date.now() - new Date(date)) / (1000*60*60*24*7);
-
-  if(weeks < 2) return "#b91c1c";
-  if(weeks < 5) return "#ef4444";
-  if(weeks < 9) return "#facc15";
-  return "#22c55e";
+function color(date){
+if(!date) return "#ccc";
+let w = (Date.now()-new Date(date))/(1000*60*60*24*7);
+if(w<2) return "#b91c1c";
+if(w<5) return "#ef4444";
+if(w<9) return "#facc15";
+return "#22c55e";
 }
 
-function zipStyle(){
-  return {
-    color:"#2563eb",
-    weight:6,
-    opacity:1,
-    fillColor:"#94a3b8",
-    fillOpacity: document.getElementById("zipFill").value=="gray"?0.15:0
-  };
-}
-
-function cityStyle(feature){
-  return {
-    color:"#111",
-    weight:2,
-    fillColor:getColor(state[feature.properties.name]),
-    fillOpacity:0.65
-  };
-}
-
+// ZIP LAYER (clean + bold)
+let zips;
 fetch("https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json")
 .then(r=>r.json())
 .then(data=>{
-  zips = L.geoJSON(data,{style:zipStyle}).addTo(map);
-  zips.bringToFront();
+zips = L.geoJSON(data,{
+style:{
+color:"#000",
+weight:2,
+fillOpacity:0
+}
+}).addTo(map);
 });
 
-fetch("https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/california-cities.geojson")
-.then(r=>r.json())
-.then(data=>{
-  cities = L.geoJSON(data,{
-    style:cityStyle,
-    onEachFeature:(f,l)=>{
-      l.on("click",()=>{
-        selected = f.properties.name;
-        l.setStyle({weight:4,color:"#000"});
-      });
-    }
-  }).addTo(map);
-  cities.bringToFront();
+// City Zones (expanded)
+const cities = [
+{name:"Sacramento", coords:[[38.2,-122.2],[39.0,-121.0]]},
+{name:"San Francisco", coords:[[37.5,-122.8],[38.0,-122.2]]},
+{name:"San Jose", coords:[[37.0,-122.2],[37.6,-121.5]]},
+{name:"Oakland", coords:[[37.6,-122.4],[38.0,-121.9]]},
+{name:"Stockton", coords:[[37.7,-121.7],[38.3,-120.9]]},
+{name:"Modesto", coords:[[37.3,-121.4],[37.9,-120.6]]},
+{name:"Fresno", coords:[[36.5,-120.5],[37.2,-119.6]]},
+{name:"Chico", coords:[[39.4,-122.0],[40.1,-121.2]]},
+{name:"Redding", coords:[[40.3,-122.7],[41.1,-121.8]]},
+{name:"Santa Rosa", coords:[[38.2,-123.1],[38.9,-122.3]]},
+{name:"Salinas", coords:[[36.4,-121.9],[36.9,-121.2]]},
+{name:"Vacaville", coords:[[38.2,-122.2],[38.6,-121.6]]}
+];
+
+cities.forEach(c=>{
+let poly = L.rectangle(c.coords,{
+color:"#000",
+weight:2,
+fillColor:color(state[c.name]),
+fillOpacity:0.6
+}).addTo(map);
+
+poly.on("click",()=>{
+selected = c.name;
+poly.setStyle({weight:4});
+});
 });
 
 function markToday(){
-  if(!selected) return;
-  state[selected] = new Date().toISOString().split("T")[0];
-  save();
+if(!selected) return;
+state[selected] = new Date().toISOString().split("T")[0];
+save();
 }
 
 function setDate(){
-  if(!selected) return;
-  state[selected] = document.getElementById("date").value;
-  save();
+if(!selected) return;
+state[selected] = document.getElementById("date").value;
+save();
 }
 
 function save(){
-  localStorage.setItem("mapState", JSON.stringify(state));
-  location.reload();
+localStorage.setItem("zones", JSON.stringify(state));
+location.reload();
 }
 
+// ZIP fill toggle
 document.getElementById("zipFill").onchange=()=>{
-  zips.setStyle(zipStyle);
+let val = document.getElementById("zipFill").value;
+zips.setStyle({
+color:"#000",
+weight:2,
+fillOpacity: val==="gray"?0.15:0
+});
 };
 
-document.getElementById("search").oninput=e=>{
-  let val=e.target.value.toLowerCase();
-  cities.eachLayer(l=>{
-    if(l.feature.properties.name.toLowerCase().includes(val)){
-      map.fitBounds(l.getBounds());
-    }
-  });
-};
 </script>
-
 </body>
 </html>
