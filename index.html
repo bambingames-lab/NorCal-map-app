@@ -19,11 +19,10 @@
 
     .panel {
       position:absolute; top:12px; right:12px; z-index:1290;
-      width:265px; max-width:calc(100vw - 24px);
+      width:275px; max-width:calc(100vw - 24px);
       background:rgba(255,255,255,.97); border-radius:14px;
-      box-shadow:0 10px 24px rgba(0,0,0,.18);
-      border:1px solid #dbe4ef; display:none;
-      max-height:calc(100vh - 24px); overflow-y:auto;
+      box-shadow:0 10px 24px rgba(0,0,0,.18); border:1px solid #dbe4ef;
+      display:none; max-height:calc(100vh - 24px); overflow-y:auto;
     }
     .panel.open { display:block; }
 
@@ -102,7 +101,7 @@
       <h1>NorCal Territory Manager</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">This redo lets you change the overdue timing in weeks. ZIPs turn green once they reach your chosen number.</div>
+      <div class="small">This full version lets you track ZIPs, clear dates, search ZIPs, and choose whether the overdue target is based on days or weeks.</div>
 
       <div class="section">
         <div class="section-title">Search ZIP</div>
@@ -114,9 +113,15 @@
 
       <div class="section">
         <div class="section-title">Overdue timing</div>
-        <label for="thresholdWeeks">Weeks until green / overdue</label>
-        <input id="thresholdWeeks" type="number" min="1" max="52" step="1">
-        <div class="small">Examples: 8 = about 2 months, 12 = about 3 months, 16 = about 4 months.</div>
+        <label for="timeMode">Use days or weeks</label>
+        <select id="timeMode">
+          <option value="weeks">Weeks</option>
+          <option value="days">Days</option>
+        </select>
+
+        <label for="thresholdValue">Turn green / overdue after</label>
+        <input id="thresholdValue" type="number" min="1" max="365" step="1">
+        <div class="small">Examples: 12 weeks, 30 days, 60 days, 8 weeks.</div>
       </div>
 
       <div class="section">
@@ -161,7 +166,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const STORAGE_KEY = "norcal-zip-zone-manager-v3";
+    const STORAGE_KEY = "norcal-zip-zone-manager-v4";
     const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
     const DB_NAME = "norcalZipZoneDB";
     const STORE_NAME = "cache";
@@ -178,10 +183,18 @@
         settings: {
           zipFill: "none",
           zipWeight: 3.5,
-          thresholdWeeks: 12
+          timeMode: "weeks",
+          thresholdValue: 12
         },
         zips: {}
       };
+    } else {
+      state.settings = state.settings || {};
+      if (!state.settings.timeMode) state.settings.timeMode = "weeks";
+      if (!state.settings.thresholdValue) state.settings.thresholdValue = 12;
+      if (!state.settings.zipFill) state.settings.zipFill = "none";
+      if (!state.settings.zipWeight) state.settings.zipWeight = 3.5;
+      state.zips = state.zips || {};
     }
 
     let zipLayer = null;
@@ -191,16 +204,22 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
-    function getThreshold() {
-      const raw = Number(state.settings.thresholdWeeks);
-      if (!Number.isFinite(raw)) return 12;
-      return Math.max(1, Math.min(52, raw));
+    function getMode() {
+      return state.settings.timeMode === "days" ? "days" : "weeks";
     }
 
-    function weeksSince(dateStr) {
+    function getThreshold() {
+      const raw = Number(state.settings.thresholdValue);
+      if (!Number.isFinite(raw)) return getMode() === "days" ? 30 : 12;
+      const max = getMode() === "days" ? 365 : 52;
+      return Math.max(1, Math.min(max, raw));
+    }
+
+    function elapsedUnits(dateStr) {
       if (!dateStr) return null;
       const then = new Date(dateStr + "T00:00:00");
-      return Math.max(0, (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24 * 7));
+      const diffDays = Math.max(0, (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24));
+      return getMode() === "days" ? diffDays : (diffDays / 7);
     }
 
     function zoneColor(dateStr) {
@@ -208,13 +227,13 @@
         return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
       }
 
-      const w = weeksSince(dateStr);
+      const elapsed = elapsedUnits(dateStr);
       const target = getThreshold();
 
-      if (w < target * 0.20) return "#b91c1c";
-      if (w < target * 0.45) return "#ef4444";
-      if (w < target * 0.70) return "#f59e0b";
-      if (w < target) return "#fde047";
+      if (elapsed < target * 0.20) return "#b91c1c";
+      if (elapsed < target * 0.45) return "#ef4444";
+      if (elapsed < target * 0.70) return "#f59e0b";
+      if (elapsed < target) return "#fde047";
       return "#22c55e";
     }
 
@@ -245,15 +264,26 @@
       };
     }
 
+    function formatTargetLabel() {
+      return "~ " + getThreshold() + " " + getMode();
+    }
+
     function updateLegend() {
-      document.getElementById("legendTarget").textContent = "~ " + getThreshold() + " weeks";
+      document.getElementById("legendTarget").textContent = formatTargetLabel();
+    }
+
+    function updateThresholdInput() {
+      const mode = getMode();
+      const input = document.getElementById("thresholdValue");
+      input.max = mode === "days" ? "365" : "52";
+      input.value = getThreshold();
     }
 
     function updateStats() {
       const tracked = Object.values(state.zips).filter(Boolean).length;
       const overdue = Object.values(state.zips).filter(v => {
-        const w = weeksSince(v);
-        return w !== null && w >= getThreshold();
+        const elapsed = elapsedUnits(v);
+        return elapsed !== null && elapsed >= getThreshold();
       }).length;
 
       const selectedText = selected
@@ -263,7 +293,7 @@
       document.getElementById("stats").innerHTML =
         selectedText +
         "<br><br><strong>ZIPs tracked:</strong> " + tracked +
-        "<br><strong>Over " + getThreshold() + " weeks:</strong> " + overdue;
+        "<br><strong>Over " + getThreshold() + " " + getMode() + ":</strong> " + overdue;
     }
 
     function popupHtml(zip) {
@@ -285,6 +315,7 @@
       if (zipLayer) {
         zipLayer.setStyle(zipStyle);
       }
+      updateThresholdInput();
       updateLegend();
       updateStats();
       saveState();
@@ -395,6 +426,7 @@
         map.fitBounds(zipLayer.getBounds(), { padding: [20, 20] });
       } catch (e) {}
 
+      updateThresholdInput();
       updateLegend();
       updateStats();
     }
@@ -442,7 +474,8 @@
 
     document.getElementById("zipFill").value = state.settings.zipFill || "none";
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
-    document.getElementById("thresholdWeeks").value = getThreshold();
+    document.getElementById("timeMode").value = getMode();
+    updateThresholdInput();
 
     document.getElementById("zipFill").addEventListener("change", (e) => {
       state.settings.zipFill = e.target.value;
@@ -454,10 +487,19 @@
       redrawZipLayer();
     });
 
-    document.getElementById("thresholdWeeks").addEventListener("change", (e) => {
+    document.getElementById("timeMode").addEventListener("change", (e) => {
+      state.settings.timeMode = e.target.value === "days" ? "days" : "weeks";
+      const current = Number(state.settings.thresholdValue || 12);
+      if (state.settings.timeMode === "days" && current > 365) state.settings.thresholdValue = 365;
+      if (state.settings.timeMode === "weeks" && current > 52) state.settings.thresholdValue = 52;
+      redrawZipLayer();
+    });
+
+    document.getElementById("thresholdValue").addEventListener("change", (e) => {
       const val = Number(e.target.value);
-      state.settings.thresholdWeeks = Number.isFinite(val) ? Math.max(1, Math.min(52, val)) : 12;
-      e.target.value = state.settings.thresholdWeeks;
+      const max = getMode() === "days" ? 365 : 52;
+      state.settings.thresholdValue = Number.isFinite(val) ? Math.max(1, Math.min(max, val)) : (getMode() === "days" ? 30 : 12);
+      e.target.value = state.settings.thresholdValue;
       redrawZipLayer();
     });
 
@@ -521,6 +563,7 @@
       }
     });
 
+    updateThresholdInput();
     updateLegend();
     updateStats();
     loadZipLayer(false);
