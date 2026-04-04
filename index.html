@@ -8,47 +8,101 @@
   <style>
     html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
     #map { height:100vh; width:100vw; background:#eef2f7; }
-    .menuBtn { position:absolute; top:12px; right:12px; z-index:1300; width:auto; padding:10px 14px; border:none; border-radius:12px; background:rgba(255,255,255,.96); box-shadow:0 10px 24px rgba(0,0,0,.16); font-weight:700; cursor:pointer; }
+
+    .menuBtn {
+      position:absolute; top:12px; right:12px; z-index:1300;
+      width:auto; padding:10px 14px; border:none; border-radius:12px;
+      background:rgba(255,255,255,.96); box-shadow:0 10px 24px rgba(0,0,0,.16);
+      font-weight:700; cursor:pointer;
+    }
     .menuBtn.hidden { display:none; }
-    .panel { position:absolute; top:12px; right:12px; z-index:1290; width:260px; max-width:calc(100vw - 24px); background:rgba(255,255,255,.97); border-radius:14px; box-shadow:0 10px 24px rgba(0,0,0,.18); border:1px solid #dbe4ef; display:none; max-height:calc(100vh - 24px); overflow-y:auto; }
+
+    .panel {
+      position:absolute; top:12px; right:12px; z-index:1290;
+      width:265px; max-width:calc(100vw - 24px);
+      background:rgba(255,255,255,.97); border-radius:14px;
+      box-shadow:0 10px 24px rgba(0,0,0,.18);
+      border:1px solid #dbe4ef; display:none;
+      max-height:calc(100vh - 24px); overflow-y:auto;
+    }
     .panel.open { display:block; }
-    .panel-header { position:sticky; top:0; z-index:2; display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(255,255,255,.98); padding:12px 12px 8px; border-bottom:1px solid #eef2f7; border-top-left-radius:14px; border-top-right-radius:14px; }
-    .closeBtn { width:auto; min-width:64px; padding:8px 10px; margin:0; background:#2563eb; color:#fff; border:none; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer; flex:0 0 auto; order:-1; }
+
+    .panel-header {
+      position:sticky; top:0; z-index:2;
+      display:flex; align-items:center; justify-content:space-between; gap:8px;
+      background:rgba(255,255,255,.98);
+      padding:12px 12px 8px;
+      border-bottom:1px solid #eef2f7;
+      border-top-left-radius:14px; border-top-right-radius:14px;
+    }
+
+    .closeBtn {
+      width:auto; min-width:64px; padding:8px 10px; margin:0;
+      background:#2563eb; color:#fff; border:none; border-radius:10px;
+      font-size:12px; font-weight:700; cursor:pointer; flex:0 0 auto; order:-1;
+    }
+
     .panel h1 { font-size:18px; margin:0; line-height:1.2; }
     .small { font-size:12px; color:#64748b; line-height:1.35; margin-bottom:10px; }
     .section { border:1px solid #e5e7eb; border-radius:12px; padding:10px; margin-top:10px; background:#fff; }
     .section-title { font-size:14px; font-weight:700; margin-bottom:8px; }
     label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; }
-    input, select, button { width:100%; box-sizing:border-box; border-radius:10px; font-size:14px; }
-    input, select { border:1px solid #d1d5db; padding:10px; background:#fff; }
-    button { border:none; padding:10px 12px; background:#2563eb; color:#fff; font-weight:700; margin-top:8px; cursor:pointer; }
+
+    input, select, button {
+      width:100%; box-sizing:border-box; border-radius:10px; font-size:14px;
+    }
+    input, select {
+      border:1px solid #d1d5db; padding:10px; background:#fff;
+    }
+    button {
+      border:none; padding:10px 12px; background:#2563eb; color:#fff;
+      font-weight:700; margin-top:8px; cursor:pointer;
+    }
     button.secondary { background:#eef2ff; color:#111827; }
     button.danger { background:#dc2626; color:#fff; }
+
     .row { display:grid; grid-template-columns: 1fr auto; gap:8px; }
     .row button { width:auto; min-width:72px; margin-top:0; }
-    .legend { display:grid; grid-template-columns:repeat(5, 1fr); height:14px; overflow:hidden; border-radius:999px; border:1px solid #d1d5db; margin-top:8px; }
+
+    .legend {
+      display:grid; grid-template-columns:repeat(5, 1fr); height:14px; overflow:hidden;
+      border-radius:999px; border:1px solid #d1d5db; margin-top:8px;
+    }
     .legend div:nth-child(1){background:#b91c1c;}
     .legend div:nth-child(2){background:#ef4444;}
     .legend div:nth-child(3){background:#f59e0b;}
     .legend div:nth-child(4){background:#fde047;}
     .legend div:nth-child(5){background:#22c55e;}
-    .legend-labels { display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-top:5px; }
-    .stats { font-size:13px; line-height:1.45; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px; }
-    .leaflet-popup-content button, .leaflet-popup-content input { width:100%; box-sizing:border-box; margin-top:6px; border-radius:8px; padding:8px; font-size:13px; }
-    .leaflet-popup-content button { border:none; background:#2563eb; color:white; font-weight:700; cursor:pointer; }
+    .legend-labels {
+      display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-top:5px;
+    }
+
+    .stats {
+      font-size:13px; line-height:1.45; background:#f8fafc;
+      border:1px solid #e2e8f0; border-radius:10px; padding:10px;
+    }
+
+    .leaflet-popup-content button,
+    .leaflet-popup-content input {
+      width:100%; box-sizing:border-box; margin-top:6px; border-radius:8px; padding:8px; font-size:13px;
+    }
+    .leaflet-popup-content button {
+      border:none; background:#2563eb; color:white; font-weight:700; cursor:pointer;
+    }
     .leaflet-popup-content .secondary { background:#eef2ff; color:#111827; }
     .leaflet-popup-content .danger { background:#dc2626; color:#fff; }
   </style>
 </head>
 <body>
   <button id="menuBtn" class="menuBtn">Menu</button>
+
   <div id="panel" class="panel">
     <div class="panel-header">
       <button id="closeBtn" class="closeBtn">Close</button>
       <h1>NorCal Territory Manager</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">This version lets each person choose their own overdue timing in weeks.</div>
+      <div class="small">This redo lets you change the overdue timing in weeks. ZIPs turn green once they reach your chosen number.</div>
 
       <div class="section">
         <div class="section-title">Search ZIP</div>
@@ -61,8 +115,8 @@
       <div class="section">
         <div class="section-title">Overdue timing</div>
         <label for="thresholdWeeks">Weeks until green / overdue</label>
-        <input type="number" id="thresholdWeeks" min="1" max="52" step="1" value="12">
-        <div class="small">12 = about 3 months, 8 = about 2 months, 16 = about 4 months.</div>
+        <input id="thresholdWeeks" type="number" min="1" max="52" step="1">
+        <div class="small">Examples: 8 = about 2 months, 12 = about 3 months, 16 = about 4 months.</div>
       </div>
 
       <div class="section">
@@ -73,16 +127,16 @@
           <option value="gray">Light gray</option>
         </select>
         <label for="zipWeight">ZIP line thickness</label>
-        <input type="range" id="zipWeight" min="2" max="6" step="0.5" value="3.5">
+        <input id="zipWeight" type="range" min="2" max="6" step="0.5">
         <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
       </div>
 
       <div class="section">
         <div class="section-title">Quick actions</div>
         <button id="markTodayBtn">Mark selected ZIP today</button>
-        <input type="date" id="date">
-        <button class="secondary" id="setDateBtn">Set selected ZIP date</button>
-        <button class="danger" id="clearDateBtn">Clear selected ZIP date</button>
+        <input id="date" type="date">
+        <button id="setDateBtn" class="secondary">Set selected ZIP date</button>
+        <button id="clearDateBtn" class="danger">Clear selected ZIP date</button>
       </div>
 
       <div class="section">
@@ -107,7 +161,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const STORAGE_KEY = "norcal-zip-zone-manager-v2";
+    const STORAGE_KEY = "norcal-zip-zone-manager-v3";
     const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
     const DB_NAME = "norcalZipZoneDB";
     const STORE_NAME = "cache";
@@ -118,10 +172,17 @@
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
 
-    let state = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
-      settings: { zipFill: "none", zipWeight: 3.5, thresholdWeeks: 12 },
-      zips: {}
-    };
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!state) {
+      state = {
+        settings: {
+          zipFill: "none",
+          zipWeight: 3.5,
+          thresholdWeeks: 12
+        },
+        zips: {}
+      };
+    }
 
     let zipLayer = null;
     let selected = null;
@@ -131,8 +192,9 @@
     }
 
     function getThreshold() {
-      const t = Number(state.settings.thresholdWeeks || 12);
-      return Math.max(1, t);
+      const raw = Number(state.settings.thresholdWeeks);
+      if (!Number.isFinite(raw)) return 12;
+      return Math.max(1, Math.min(52, raw));
     }
 
     function weeksSince(dateStr) {
@@ -142,25 +204,38 @@
     }
 
     function zoneColor(dateStr) {
-      if (!dateStr) return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
+      if (!dateStr) {
+        return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
+      }
+
       const w = weeksSince(dateStr);
       const target = getThreshold();
-      if (w < target * 0.2) return "#b91c1c";
+
+      if (w < target * 0.20) return "#b91c1c";
       if (w < target * 0.45) return "#ef4444";
-      if (w < target * 0.7) return "#f59e0b";
+      if (w < target * 0.70) return "#f59e0b";
       if (w < target) return "#fde047";
       return "#22c55e";
     }
 
     function zipCodeFromFeature(feature) {
       const p = feature.properties || {};
-      return String(p.ZCTA5CE10 || p.ZCTA5CE20 || p.zip_code || p.ZIP_CODE || p.zip || p.name || "");
+      return String(
+        p.ZCTA5CE10 ||
+        p.ZCTA5CE20 ||
+        p.zip_code ||
+        p.ZIP_CODE ||
+        p.zip ||
+        p.name ||
+        ""
+      );
     }
 
     function zipStyle(feature) {
       const zip = zipCodeFromFeature(feature);
       const isSelected = selected === zip;
       const last = state.zips[zip];
+
       return {
         color: isSelected ? "#2563eb" : "#111827",
         weight: isSelected ? Number(state.settings.zipWeight || 3.5) + 1.5 : Number(state.settings.zipWeight || 3.5),
@@ -171,7 +246,7 @@
     }
 
     function updateLegend() {
-      document.getElementById("legendTarget").textContent = `~ ${getThreshold()} weeks`;
+      document.getElementById("legendTarget").textContent = "~ " + getThreshold() + " weeks";
     }
 
     function updateStats() {
@@ -182,13 +257,13 @@
       }).length;
 
       const selectedText = selected
-        ? `<strong>Selected ZIP:</strong> ${selected}<br><strong>Last visited:</strong> ${state.zips[selected] || "Not set"}`
+        ? "<strong>Selected ZIP:</strong> " + selected + "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set")
         : "No ZIP selected yet.";
 
       document.getElementById("stats").innerHTML =
         selectedText +
-        `<br><br><strong>ZIPs tracked:</strong> ${tracked}` +
-        `<br><strong>Over ${getThreshold()} weeks:</strong> ${overdue}`;
+        "<br><br><strong>ZIPs tracked:</strong> " + tracked +
+        "<br><strong>Over " + getThreshold() + " weeks:</strong> " + overdue;
     }
 
     function popupHtml(zip) {
@@ -207,7 +282,9 @@
     }
 
     function redrawZipLayer() {
-      if (zipLayer) zipLayer.setStyle(zipStyle);
+      if (zipLayer) {
+        zipLayer.setStyle(zipStyle);
+      }
       updateLegend();
       updateStats();
       saveState();
@@ -231,9 +308,9 @@
 
     window.popupSaveDate = function () {
       if (!selected) return;
-      const val = document.getElementById("popupDate").value;
-      if (!val) return;
-      state.zips[selected] = val;
+      const el = document.getElementById("popupDate");
+      if (!el || !el.value) return;
+      state.zips[selected] = el.value;
       redrawZipLayer();
       map.closePopup();
     };
@@ -255,8 +332,11 @@
       return {
         type: "FeatureCollection",
         features: (data.features || []).filter(f => {
-          try { return centerLat(f) >= SOUTH_LIMIT; }
-          catch { return false; }
+          try {
+            return centerLat(f) >= SOUTH_LIMIT;
+          } catch (e) {
+            return false;
+          }
         })
       };
     }
@@ -266,7 +346,9 @@
         const request = indexedDB.open(DB_NAME, 1);
         request.onupgradeneeded = (event) => {
           const db = event.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME);
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
         };
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
@@ -294,7 +376,10 @@
     }
 
     async function renderZipData(data) {
-      if (zipLayer) map.removeLayer(zipLayer);
+      if (zipLayer) {
+        map.removeLayer(zipLayer);
+      }
+
       zipLayer = L.geoJSON(data, {
         style: zipStyle,
         onEachFeature: (feature, layer) => {
@@ -305,7 +390,11 @@
           });
         }
       }).addTo(map);
-      try { map.fitBounds(zipLayer.getBounds(), { padding: [20, 20] }); } catch(e) {}
+
+      try {
+        map.fitBounds(zipLayer.getBounds(), { padding: [20, 20] });
+      } catch (e) {}
+
       updateLegend();
       updateStats();
     }
@@ -314,7 +403,9 @@
       try {
         if (!forceRefresh) {
           const cached = await cacheGet("zipGeoJSONNorth");
-          if (cached) await renderZipData(cached);
+          if (cached) {
+            await renderZipData(cached);
+          }
         }
 
         const res = await fetch(ZIP_URL, { cache: "no-store" });
@@ -363,8 +454,10 @@
       redrawZipLayer();
     });
 
-    document.getElementById("thresholdWeeks").addEventListener("input", (e) => {
-      state.settings.thresholdWeeks = Math.max(1, Number(e.target.value || 12));
+    document.getElementById("thresholdWeeks").addEventListener("change", (e) => {
+      const val = Number(e.target.value);
+      state.settings.thresholdWeeks = Number.isFinite(val) ? Math.max(1, Math.min(52, val)) : 12;
+      e.target.value = state.settings.thresholdWeeks;
       redrawZipLayer();
     });
 
@@ -397,6 +490,7 @@
     function zoomToZip(zip) {
       if (!zipLayer) return false;
       let found = false;
+
       zipLayer.eachLayer(layer => {
         const code = zipCodeFromFeature(layer.feature);
         if (code === zip) {
@@ -407,18 +501,23 @@
           layer.bindPopup(popupHtml(zip)).openPopup();
         }
       });
+
       return found;
     }
 
     document.getElementById("searchBtn").addEventListener("click", () => {
       const zip = findZip(document.getElementById("searchInput").value);
-      if (!zip || !zoomToZip(zip)) alert("No ZIP match found.");
+      if (!zip || !zoomToZip(zip)) {
+        alert("No ZIP match found.");
+      }
     });
 
     document.getElementById("searchInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         const zip = findZip(e.target.value);
-        if (!zip || !zoomToZip(zip)) alert("No ZIP match found.");
+        if (!zip || !zoomToZip(zip)) {
+          alert("No ZIP match found.");
+        }
       }
     });
 
