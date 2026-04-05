@@ -89,6 +89,16 @@
     input, select, button {
       width:100%; box-sizing:border-box; border-radius:12px; font-size:14px;
     }
+
+    input[type="color"]{
+      width:100%;
+      height:44px;
+      padding:4px;
+      border-radius:12px;
+      border:1px solid #cde7a5;
+      background:#fff;
+      box-sizing:border-box;
+    }
     input, select {
       border:1px solid #cde7a5; padding:11px 12px; background:#fff; color:#000;
       outline:none;
@@ -253,9 +263,20 @@
           <option value="team3">Team 3</option>
           <option value="team4">Team 4</option>
         </select>
+
+        <label for="team1Color">Team 1 color</label>
+        <input id="team1Color" type="color">
+        <label for="team2Color">Team 2 color</label>
+        <input id="team2Color" type="color">
+        <label for="team3Color">Team 3 color</label>
+        <input id="team3Color" type="color">
+        <label for="team4Color">Team 4 color</label>
+        <input id="team4Color" type="color">
+
+        <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
         <button id="applyTeamBtn" class="secondary">Apply team to selected area</button>
         <button id="clearTeamBtn" class="secondary">Clear team from selected area</button>
-        <div class="small">Team color shows as a border accent on the selected ZIP or city.</div>
+        <div class="small">Team colors show as a border accent on ZIPs and cities.</div>
       </div>
 
       <div class="section">
@@ -318,6 +339,12 @@
             mid: "#f59e0b",
             late: "#fde047",
             overdue: "#22c55e"
+          },
+          teamColors: {
+            team1: "#2563eb",
+            team2: "#9333ea",
+            team3: "#ec4899",
+            team4: "#0f766e"
           }
         },
         zips: {},
@@ -336,6 +363,12 @@
         mid: "#f59e0b",
         late: "#fde047",
         overdue: "#22c55e"
+      };
+      state.settings.teamColors = state.settings.teamColors || {
+        team1: "#2563eb",
+        team2: "#9333ea",
+        team3: "#ec4899",
+        team4: "#0f766e"
       };
       state.zips = state.zips || {};
       state.cities = state.cities || {};
@@ -423,12 +456,14 @@
       };
     }
 
-    const TEAM_COLORS = {
-      team1: "#2563eb",
-      team2: "#9333ea",
-      team3: "#ec4899",
-      team4: "#0f766e"
-    };
+    function getTeamColors() {
+      return state.settings.teamColors || {
+        team1: "#2563eb",
+        team2: "#9333ea",
+        team3: "#ec4899",
+        team4: "#0f766e"
+      };
+    }
 
     function getAreaTeam(type, key) {
       if (type === "zip") return (state.zipTeams || {})[key] || "";
@@ -437,7 +472,8 @@
 
     function teamBorderColor(type, key, fallback) {
       const team = getAreaTeam(type, key);
-      return TEAM_COLORS[team] || fallback;
+      const colors = getTeamColors();
+      return colors[team] || fallback;
     }
 
     function bindZipTooltip(layer, feature) {
@@ -829,6 +865,10 @@
     document.getElementById("colorMid").value = (state.settings.gradient || {}).mid || "#f59e0b";
     document.getElementById("colorLate").value = (state.settings.gradient || {}).late || "#fde047";
     document.getElementById("colorOverdue").value = (state.settings.gradient || {}).overdue || "#22c55e";
+    document.getElementById("team1Color").value = (state.settings.teamColors || {}).team1 || "#2563eb";
+    document.getElementById("team2Color").value = (state.settings.teamColors || {}).team2 || "#9333ea";
+    document.getElementById("team3Color").value = (state.settings.teamColors || {}).team3 || "#ec4899";
+    document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";
     updateThresholdInput();
 
     document.getElementById("zipFill").addEventListener("change", (e) => {
@@ -873,6 +913,16 @@
       document.getElementById("colorMid").value = state.settings.gradient.mid;
       document.getElementById("colorLate").value = state.settings.gradient.late;
       document.getElementById("colorOverdue").value = state.settings.gradient.overdue;
+      redrawAllLayers();
+    });
+
+    document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
+      state.settings.teamColors = {
+        team1: document.getElementById("team1Color").value,
+        team2: document.getElementById("team2Color").value,
+        team3: document.getElementById("team3Color").value,
+        team4: document.getElementById("team4Color").value
+      };
       redrawAllLayers();
     });
 
