@@ -184,6 +184,7 @@
     const STORE_NAME = "cache";
     const CITY_CACHE_KEY = "cityGeoJSONNorth";
     const SOUTH_LIMIT = 38.05;
+    const ZIP_SHOW_ZOOM = 9;
 
     const map = L.map("map").setView([39.1, -121.4], 7);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -301,22 +302,46 @@
         className: "zip-code-label"
       });
 
-      if (!state.settings.showZipLabels) {
-        layer.closeTooltip();
-      }
+      updateZipTooltips();
+    }
+
+    function updateZipTooltips() {
+      if (!zipLayer) return;
+
+      const show = map.getZoom() >= ZIP_SHOW_ZOOM;
+
+      zipLayer.eachLayer(layer => {
+        if (show && state.settings.showZipLabels) {
+          try { layer.openTooltip(); } catch (e) {}
+        } else {
+          try { layer.closeTooltip(); } catch (e) {}
+        }
+      });
     }
 
     function zipStyle(feature) {
       const zip = zipCodeFromFeature(feature);
       const isSelected = selectedType === "zip" && selected === zip;
+      const zoom = map.getZoom();
+
+      let baseWeight = Number(state.settings.zipWeight || 3.5);
+
+      if (zoom <= 6) baseWeight = 0.6;
+      else if (zoom <= 7) baseWeight = 1.0;
+      else if (zoom <= 8) baseWeight = 1.5;
+      else if (zoom <= 9) baseWeight = 2.2;
+
+      const visible = zoom >= ZIP_SHOW_ZOOM;
       const last = state.zips[zip];
 
       return {
         color: isSelected ? "#2563eb" : "#111827",
-        weight: isSelected ? Number(state.settings.zipWeight || 3.5) + 1.5 : Number(state.settings.zipWeight || 3.5),
-        opacity: 0.95,
+        weight: isSelected ? baseWeight + 1.2 : baseWeight,
+        opacity: visible ? 0.95 : 0,
         fillColor: zoneColor(last),
-        fillOpacity: last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0)
+        fillOpacity: visible
+          ? (last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0))
+          : 0
       };
     }
 
@@ -401,6 +426,7 @@
     function redrawAllLayers() {
       if (zipLayer) {
         zipLayer.setStyle(zipStyle);
+        updateZipTooltips();
       }
       if (cityLayer) {
         cityLayer.setStyle(cityStyle);
@@ -778,6 +804,14 @@
     updateThresholdInput();
     updateLegend();
     updateStats();
+
+    map.on("zoomend", () => {
+      if (zipLayer) {
+        zipLayer.setStyle(zipStyle);
+        updateZipTooltips();
+      }
+    });
+
     loadZipLayer(false);
     loadCityLayer(false);
   </script>
