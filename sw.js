@@ -1,5 +1,5 @@
-const CACHE_NAME = 'norcal-territory-tracker-v1';
-const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
+const CACHE_NAME = 'territory-manager-v1';
+const ASSETS = ['./','./index.html','./manifest.json','./icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
@@ -14,8 +14,7 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  const req = event.request;
   event.respondWith(
-    caches.match(req).then(cached => cached || fetch(req).catch(() => caches.match('./index.html')))
+    caches.match(event.request).then(cached => cached || fetch(event.request).catch(() => caches.match('./index.html')))
   );
 });

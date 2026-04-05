@@ -3,26 +3,50 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NorCal Territory Manager</title>
+  <title>Territory Manager</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
-    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
-    #map { height:100vh; width:100vw; background:#eef2f7; }
+    :root{
+      --bg:#f5fbf6;
+      --panel:#ffffff;
+      --panel-border:#d9eadb;
+      --text:#173224;
+      --muted:#5f7a69;
+      --primary:#7ac38b;
+      --primary-dark:#4f9e64;
+      --primary-soft:#e8f6eb;
+      --secondary:#eef8f0;
+      --danger:#d95f5f;
+      --shadow:0 14px 34px rgba(31, 68, 43, 0.14);
+    }
+
+    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; background:var(--bg); color:var(--text); }
+    #map { height:100vh; width:100vw; background:#eef5ef; }
+
+    .app-badge{
+      position:absolute; left:12px; top:12px; z-index:1300;
+      background:rgba(255,255,255,.96); border:1px solid var(--panel-border);
+      border-radius:14px; box-shadow:var(--shadow);
+      padding:10px 14px; font-weight:700; color:var(--primary-dark);
+      letter-spacing:.2px;
+    }
 
     .menuBtn {
       position:absolute; top:12px; right:12px; z-index:1300;
-      width:auto; padding:10px 14px; border:none; border-radius:12px;
-      background:rgba(255,255,255,.96); box-shadow:0 10px 24px rgba(0,0,0,.16);
-      font-weight:700; cursor:pointer;
+      width:auto; padding:11px 15px; border:none; border-radius:14px;
+      background:rgba(255,255,255,.97); box-shadow:var(--shadow);
+      font-weight:700; cursor:pointer; color:var(--primary-dark);
+      border:1px solid var(--panel-border);
     }
     .menuBtn.hidden { display:none; }
 
     .panel {
       position:absolute; top:12px; right:12px; z-index:1290;
-      width:275px; max-width:calc(100vw - 24px);
-      background:rgba(255,255,255,.97); border-radius:14px;
-      box-shadow:0 10px 24px rgba(0,0,0,.18); border:1px solid #dbe4ef;
+      width:310px; max-width:calc(100vw - 24px);
+      background:rgba(255,255,255,.985); border-radius:18px;
+      box-shadow:var(--shadow); border:1px solid var(--panel-border);
       display:none; max-height:calc(100vh - 24px); overflow-y:auto;
+      backdrop-filter: blur(10px);
     }
     .panel.open { display:block; }
 
@@ -30,42 +54,53 @@
       position:sticky; top:0; z-index:2;
       display:flex; align-items:center; justify-content:space-between; gap:8px;
       background:rgba(255,255,255,.98);
-      padding:12px 12px 8px;
-      border-bottom:1px solid #eef2f7;
-      border-top-left-radius:14px; border-top-right-radius:14px;
+      padding:14px 14px 10px;
+      border-bottom:1px solid #edf4ee;
+      border-top-left-radius:18px; border-top-right-radius:18px;
     }
 
     .closeBtn {
-      width:auto; min-width:64px; padding:8px 10px; margin:0;
-      background:#2563eb; color:#fff; border:none; border-radius:10px;
+      width:auto; min-width:68px; padding:8px 12px; margin:0;
+      background:linear-gradient(180deg, var(--primary), var(--primary-dark));
+      color:#fff; border:none; border-radius:12px;
       font-size:12px; font-weight:700; cursor:pointer; flex:0 0 auto; order:-1;
+      box-shadow:0 8px 18px rgba(79, 158, 100, .25);
     }
 
-    .panel h1 { font-size:18px; margin:0; line-height:1.2; }
-    .small { font-size:12px; color:#64748b; line-height:1.35; margin-bottom:10px; }
-    .section { border:1px solid #e5e7eb; border-radius:12px; padding:10px; margin-top:10px; background:#fff; }
-    .section-title { font-size:14px; font-weight:700; margin-bottom:8px; }
-    label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; }
+    .panel h1 { font-size:20px; margin:0; line-height:1.2; color:var(--text); }
+    .small { font-size:12px; color:var(--muted); line-height:1.45; margin-bottom:10px; }
+    .section {
+      border:1px solid #e7f1e8; border-radius:14px; padding:12px; margin-top:12px; background:#fff;
+      box-shadow:0 1px 0 rgba(0,0,0,.02);
+    }
+    .section-title { font-size:14px; font-weight:700; margin-bottom:8px; color:var(--text); }
+    label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; color:var(--muted); }
 
     input, select, button {
-      width:100%; box-sizing:border-box; border-radius:10px; font-size:14px;
+      width:100%; box-sizing:border-box; border-radius:12px; font-size:14px;
     }
     input, select {
-      border:1px solid #d1d5db; padding:10px; background:#fff;
+      border:1px solid #d5e7d8; padding:11px 12px; background:#fff; color:var(--text);
+      outline:none;
+    }
+    input:focus, select:focus {
+      border-color:var(--primary);
+      box-shadow:0 0 0 3px rgba(122,195,139,.18);
     }
     button {
-      border:none; padding:10px 12px; background:#2563eb; color:#fff;
+      border:none; padding:11px 12px; background:linear-gradient(180deg, var(--primary), var(--primary-dark)); color:#fff;
       font-weight:700; margin-top:8px; cursor:pointer;
+      box-shadow:0 8px 18px rgba(79, 158, 100, .22);
     }
-    button.secondary { background:#eef2ff; color:#111827; }
-    button.danger { background:#dc2626; color:#fff; }
+    button.secondary { background:var(--secondary); color:var(--text); box-shadow:none; }
+    button.danger { background:linear-gradient(180deg, #ea7a7a, var(--danger)); color:#fff; }
 
     .row { display:grid; grid-template-columns: 1fr auto; gap:8px; }
     .row button { width:auto; min-width:72px; margin-top:0; }
 
     .legend {
       display:grid; grid-template-columns:repeat(5, 1fr); height:14px; overflow:hidden;
-      border-radius:999px; border:1px solid #d1d5db; margin-top:8px;
+      border-radius:999px; border:1px solid #dbe9dd; margin-top:8px;
     }
     .legend div:nth-child(1){background:#b91c1c;}
     .legend div:nth-child(2){background:#ef4444;}
@@ -73,46 +108,59 @@
     .legend div:nth-child(4){background:#fde047;}
     .legend div:nth-child(5){background:#22c55e;}
     .legend-labels {
-      display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-top:5px;
+      display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:5px;
     }
 
     .stats {
-      font-size:13px; line-height:1.45; background:#f8fafc;
-      border:1px solid #e2e8f0; border-radius:10px; padding:10px;
+      font-size:13px; line-height:1.5; background:var(--primary-soft);
+      border:1px solid #dbeedc; border-radius:12px; padding:11px; color:var(--text);
     }
 
     .leaflet-popup-content button,
     .leaflet-popup-content input {
-      width:100%; box-sizing:border-box; margin-top:6px; border-radius:8px; padding:8px; font-size:13px;
+      width:100%; box-sizing:border-box; margin-top:6px; border-radius:10px; padding:8px; font-size:13px;
     }
     .leaflet-popup-content button {
-      border:none; background:#2563eb; color:white; font-weight:700; cursor:pointer;
+      border:none; background:linear-gradient(180deg, var(--primary), var(--primary-dark)); color:white; font-weight:700; cursor:pointer;
     }
-    .leaflet-popup-content .secondary { background:#eef2ff; color:#111827; }
-    .leaflet-popup-content .danger { background:#dc2626; color:#fff; }
+    .leaflet-popup-content .secondary { background:var(--secondary); color:var(--text); }
+    .leaflet-popup-content .danger { background:linear-gradient(180deg, #ea7a7a, var(--danger)); color:#fff; }
 
     .zip-code-label {
-      background: rgba(255,255,255,0.9);
-      border: 1px solid #cbd5e1;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #d5e7d8;
       border-radius: 6px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.12);
-      color: #111827;
+      box-shadow: 0 1px 4px rgba(0,0,0,.10);
+      color: #173224;
       font-size: 9px;
       font-weight: 700;
       padding: 1px 4px;
     }
+
+    @media (max-width: 640px){
+      .panel{
+        width:calc(100vw - 24px);
+      }
+      .app-badge{
+        right:auto;
+        max-width:55vw;
+      }
+    }
   </style>
+  <link rel="manifest" href="manifest.json"/>
+  <meta name="theme-color" content="#7ac38b"/>
 </head>
 <body>
+  <div class="app-badge">Territory Manager</div>
   <button id="menuBtn" class="menuBtn">Menu</button>
 
   <div id="panel" class="panel">
     <div class="panel-header">
       <button id="closeBtn" class="closeBtn">Close</button>
-      <h1>NorCal Territory Manager</h1>
+      <h1>Territory Manager</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">This full version lets you track ZIPs, clear dates, search ZIPs, and choose whether the overdue target is based on days or weeks.</div>
+      <div class="small">Track ZIPs and cities, search faster, and manage overdue territories with a polished shared-ready layout.</div>
 
       <div class="section">
         <div class="section-title">Search ZIP</div>
@@ -812,5 +860,6 @@
     loadZipLayer(false);
     loadCityLayer(false);
   </script>
+  <script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js"));}</script>
 </body>
 </html>
