@@ -41,27 +41,6 @@
       line-height:1;
     }
 
-    .topbar-actions{
-      display:flex;
-      gap:10px;
-      align-items:center;
-    }
-
-    .teamLaunchBtn{
-      width:112px;
-      height:48px;
-      border:none;
-      border-radius:10px;
-      background:#000;
-      box-shadow:none;
-      font-weight:700;
-      cursor:pointer;
-      color:var(--primary);
-      border:1px solid rgba(157,230,0,.55);
-      margin:0;
-      font-size:16px;
-    }
-
     .menuBtn {
       width:auto; padding:10px 14px; border:none; border-radius:10px;
       background:#000; box-shadow:none;
@@ -69,7 +48,7 @@
       border:1px solid rgba(157,230,0,.55);
       margin:0;
     }
-    .menuBtn.hidden, .teamLaunchBtn.hidden { display:none; }
+    .menuBtn.hidden { display:none; }
 
     .panel {
       position:absolute; top:66px; right:12px; z-index:1290;
@@ -210,19 +189,17 @@
 <body>
   <div class="topbar">
     <div class="topbar-title">Territory Manager</div>
-    <div class="topbar-actions">
-      <button id="teamMenuBtn" class="teamLaunchBtn">Teams</button>
-      <button id="menuBtn" class="menuBtn">Menu</button>
-    </div>
+    <button id="teamMenuBtn" class="teamLaunchBtn">Teams</button>
+    <button id="menuBtn" class="menuBtn">Menu</button>
   </div>
 
-  <div id="teamPanel" class="panel" style="left:12px; right:auto; top:66px; display:none;">
+  <div id="teamPanel" class="panel team-panel">
     <div class="panel-header">
       <button id="closeTeamBtn" class="closeBtn">Close</button>
       <h1>Teams</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Choose team colors here, assign areas, and set which teams define the follow-up gradient.</div>
+      <div class="small">Choose team colors, assign the selected area, and control the gradient from one team color to another.</div>
 
       <div class="section">
         <div class="section-title">Team colors</div>
@@ -238,15 +215,15 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Gradient by teams</div>
-        <label for="gradientStartTeam">Recent side team color</label>
+        <div class="section-title">Gradient teams</div>
+        <label for="gradientStartTeam">Recent side team</label>
         <select id="gradientStartTeam">
           <option value="team1">Team 1</option>
           <option value="team2">Team 2</option>
           <option value="team3">Team 3</option>
           <option value="team4">Team 4</option>
         </select>
-        <label for="gradientEndTeam">Ready again side team color</label>
+        <label for="gradientEndTeam">Ready again side team</label>
         <select id="gradientEndTeam">
           <option value="team1">Team 1</option>
           <option value="team2">Team 2</option>
@@ -254,7 +231,6 @@
           <option value="team4">Team 4</option>
         </select>
         <button id="saveGradientTeamsBtn" class="secondary">Save gradient teams</button>
-        <div class="small">The map now fades from one chosen team color to the other as the wait time increases.</div>
       </div>
 
       <div class="section">
@@ -379,16 +355,6 @@
             mid: "#f59e0b",
             late: "#fde047",
             overdue: "#22c55e"
-          },
-          teamColors: {
-            team1: "#2563eb",
-            team2: "#9333ea",
-            team3: "#ec4899",
-            team4: "#0f766e"
-          },
-          teamGradient: {
-            startTeam: "team1",
-            endTeam: "team4"
           }
         },
         zips: {},
@@ -407,16 +373,6 @@
         mid: "#f59e0b",
         late: "#fde047",
         overdue: "#22c55e"
-      };
-      state.settings.teamColors = state.settings.teamColors || {
-        team1: "#2563eb",
-        team2: "#9333ea",
-        team3: "#ec4899",
-        team4: "#0f766e"
-      };
-      state.settings.teamGradient = state.settings.teamGradient || {
-        startTeam: "team1",
-        endTeam: "team4"
       };
       state.zips = state.zips || {};
       state.cities = state.cities || {};
@@ -511,45 +467,12 @@
       };
     }
 
-    function getTeamColors() {
-      return state.settings.teamColors || {
-        team1: "#2563eb",
-        team2: "#9333ea",
-        team3: "#ec4899",
-        team4: "#0f766e"
-      };
-    }
-
-    function getAreaTeam(type, key) {    function hexToRgb(hex) {
-      const clean = String(hex || "").replace("#", "");
-      const full = clean.length === 3 ? clean.split("").map(c => c + c).join("") : clean;
-      const num = parseInt(full, 16);
-      return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
-    }
-
-    function rgbToHex(r, g, b) {
-      const toHex = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
-      return "#" + toHex(r) + toHex(g) + toHex(b);
-    }
-
-    function mixColors(a, b, t) {
-      const ca = hexToRgb(a);
-      const cb = hexToRgb(b);
-      return rgbToHex(
-        ca.r + (cb.r - ca.r) * t,
-        ca.g + (cb.g - ca.g) * t,
-        ca.b + (cb.b - ca.b) * t
-      );
-    }
-
-    function gradientEndpoints() {
-      const colors = getTeamColors();
-      const grad = state.settings.teamGradient || {};
-      return {
-        start: colors[grad.startTeam || "team1"] || "#2563eb",
-        end: colors[grad.endTeam || "team4"] || "#0f766e"
-      };
-    }
+    const TEAM_COLORS = {
+      team1: "#2563eb",
+      team2: "#9333ea",
+      team3: "#ec4899",
+      team4: "#0f766e"
+    };
 
     function getAreaTeam(type, key) {
       if (type === "zip") return (state.zipTeams || {})[key] || "";
@@ -558,8 +481,7 @@
 
     function teamBorderColor(type, key, fallback) {
       const team = getAreaTeam(type, key);
-      const colors = getTeamColors();
-      return colors[team] || fallback;
+      return TEAM_COLORS[team] || fallback;
     }
 
     function bindZipTooltip(layer, feature) {
@@ -660,10 +582,14 @@
         }
       }
 
-      if (selected) {
-        document.getElementById("teamSelectTop").value = selectedType === "zip"
-          ? (state.zipTeams[selected] || "")
-          : (state.cityTeams[selected] || "");
+      if (document.getElementById("teamSelectTop")) {
+        if (selected) {
+          document.getElementById("teamSelectTop").value = selectedType === "zip"
+            ? (state.zipTeams[selected] || "")
+            : (state.cityTeams[selected] || "");
+        } else {
+          document.getElementById("teamSelectTop").value = "";
+        }
       }
 
       document.getElementById("stats").innerHTML =
@@ -933,42 +859,20 @@
     }
 
     const panel = document.getElementById("panel");
-    const teamPanel = document.getElementById("teamPanel");
     const menuBtn = document.getElementById("menuBtn");
-    const teamMenuBtn = document.getElementById("teamMenuBtn");
 
     function openMenu() {
       panel.classList.add("open");
-      teamPanel.style.display = "none";
       menuBtn.classList.add("hidden");
-      teamMenuBtn.classList.remove("hidden");
     }
 
     function closeMenu() {
       panel.classList.remove("open");
-      if (teamPanel.style.display !== "block") {
-        menuBtn.classList.remove("hidden");
-      }
-    }
-
-    function openTeamMenu() {
-      teamPanel.style.display = "block";
-      panel.classList.remove("open");
-      teamMenuBtn.classList.add("hidden");
       menuBtn.classList.remove("hidden");
     }
 
-    function closeTeamMenu() {
-      teamPanel.style.display = "none";
-      if (!panel.classList.contains("open")) {
-        teamMenuBtn.classList.remove("hidden");
-      }
-    }
-
     menuBtn.addEventListener("click", openMenu);
-    teamMenuBtn.addEventListener("click", openTeamMenu);
     document.getElementById("closeBtn").addEventListener("click", closeMenu);
-    document.getElementById("closeTeamBtn").addEventListener("click", closeTeamMenu);
 
     document.getElementById("zipFill").value = state.settings.zipFill || "none";
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
@@ -998,19 +902,9 @@
       redrawAllLayers();
     });
 
-    document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
-      state.settings.teamColors = {
-        team1: document.getElementById("team1Color").value,
-        team2: document.getElementById("team2Color").value,
-        team3: document.getElementById("team3Color").value,
-        team4: document.getElementById("team4Color").value
-      };
-      redrawAllLayers();
-    });
-
-    document.getElementById("applyTeamBtnTop").addEventListener("click", () => {
+    document.getElementById("applyTeamBtn").addEventListener("click", () => {
       if (!selected) return;
-      const team = document.getElementById("teamSelectTop").value;
+      const team = document.getElementById("teamSelect").value;
       if (selectedType === "zip") {
         state.zipTeams = state.zipTeams || {};
         if (team) state.zipTeams[selected] = team;
@@ -1021,12 +915,13 @@
       redrawAllLayers();
     });
 
-    document.getElementById("clearTeamBtnTop").addEventListener("click", () => {
+    document.getElementById("clearTeamBtn").addEventListener("click", () => {
       if (!selected) return;
       if (selectedType === "zip" && state.zipTeams) delete state.zipTeams[selected];
       if (selectedType === "city" && state.cityTeams) delete state.cityTeams[selected];
       redrawAllLayers();
     });
+
 
     document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
       state.settings.teamColors = {
