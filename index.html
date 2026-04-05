@@ -90,6 +90,17 @@
     }
     .leaflet-popup-content .secondary { background:#eef2ff; color:#111827; }
     .leaflet-popup-content .danger { background:#dc2626; color:#fff; }
+
+    .zip-code-label {
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.12);
+      color: #111827;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+    }
   </style>
 </head>
 <body>
@@ -168,8 +179,10 @@
   <script>
     const STORAGE_KEY = "norcal-zip-zone-manager-v4";
     const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
+    const CITY_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/California_Cities/FeatureServer/0/query?where=1=1&outFields=*&outSR=4326&f=geojson";
     const DB_NAME = "norcalZipZoneDB";
     const STORE_NAME = "cache";
+    const CITY_CACHE_KEY = "cityGeoJSONNorth";
     const SOUTH_LIMIT = 38.05;
 
     const map = L.map("map").setView([39.1, -121.4], 7);
@@ -184,9 +197,11 @@
           zipFill: "none",
           zipWeight: 3.5,
           timeMode: "weeks",
-          thresholdValue: 12
+          thresholdValue: 12,
+          showZipLabels: true
         },
-        zips: {}
+        zips: {},
+        cities: {}
       };
     } else {
       state.settings = state.settings || {};
@@ -194,11 +209,15 @@
       if (!state.settings.thresholdValue) state.settings.thresholdValue = 12;
       if (!state.settings.zipFill) state.settings.zipFill = "none";
       if (!state.settings.zipWeight) state.settings.zipWeight = 3.5;
+      if (state.settings.showZipLabels === undefined) state.settings.showZipLabels = true;
       state.zips = state.zips || {};
+      state.cities = state.cities || {};
     }
 
     let zipLayer = null;
+    let cityLayer = null;
     let selected = null;
+    let selectedType = "zip";
 
     function saveState() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -249,10 +268,47 @@
         ""
       );
     }
+    function cityNameFromFeature(feature) {
+      const p = feature.properties || {};
+      return String(
+        p.NAME ||
+        p.name ||
+        p.CITY ||
+        p.city ||
+        ""
+      );
+    }
+
+    function cityStyle(feature) {
+      const city = cityNameFromFeature(feature);
+      const isSelected = selectedType === "city" && selected === city;
+      const last = state.cities[city];
+
+      return {
+        color: isSelected ? "#2563eb" : "#ffffff",
+        weight: isSelected ? 2.5 : 1.2,
+        opacity: 1,
+        fillColor: zoneColor(last),
+        fillOpacity: last ? 0.68 : 0.18
+      };
+    }
+
+    function bindZipTooltip(layer, feature) {
+      const zip = zipCodeFromFeature(feature);
+      layer.bindTooltip(zip, {
+        permanent: true,
+        direction: "center",
+        className: "zip-code-label"
+      });
+
+      if (!state.settings.showZipLabels) {
+        layer.closeTooltip();
+      }
+    }
 
     function zipStyle(feature) {
       const zip = zipCodeFromFeature(feature);
-      const isSelected = selected === zip;
+      const isSelected = selectedType === "zip" && selected === zip;
       const last = state.zips[zip];
 
       return {
@@ -280,20 +336,37 @@
     }
 
     function updateStats() {
-      const tracked = Object.values(state.zips).filter(Boolean).length;
-      const overdue = Object.values(state.zips).filter(v => {
+      const trackedZips = Object.values(state.zips).filter(Boolean).length;
+      const overdueZips = Object.values(state.zips).filter(v => {
         const elapsed = elapsedUnits(v);
         return elapsed !== null && elapsed >= getThreshold();
       }).length;
 
-      const selectedText = selected
-        ? "<strong>Selected ZIP:</strong> " + selected + "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set")
-        : "No ZIP selected yet.";
+      const trackedCities = Object.values(state.cities).filter(Boolean).length;
+      const overdueCities = Object.values(state.cities).filter(v => {
+        const elapsed = elapsedUnits(v);
+        return elapsed !== null && elapsed >= getThreshold();
+      }).length;
+
+      let selectedText = "No area selected yet.";
+      if (selected) {
+        if (selectedType === "zip") {
+          selectedText =
+            "<strong>Selected ZIP:</strong> " + selected +
+            "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set");
+        } else {
+          selectedText =
+            "<strong>Selected city:</strong> " + selected +
+            "<br><strong>Last visited:</strong> " + (state.cities[selected] || "Not set");
+        }
+      }
 
       document.getElementById("stats").innerHTML =
         selectedText +
-        "<br><br><strong>ZIPs tracked:</strong> " + tracked +
-        "<br><strong>Over " + getThreshold() + " " + getMode() + ":</strong> " + overdue;
+        "<br><br><strong>ZIPs tracked:</strong> " + trackedZips +
+        "<br><strong>Cities tracked:</strong> " + trackedCities +
+        "<br><strong>Over " + getThreshold() + " " + getMode() + " ZIPs:</strong> " + overdueZips +
+        "<br><strong>Over " + getThreshold() + " " + getMode() + " cities:</strong> " + overdueCities;
     }
 
     function popupHtml(zip) {
@@ -310,10 +383,27 @@
         </div>
       `;
     }
+    function cityPopupHtml(city) {
+      const last = state.cities[city] || "Not set";
+      return `
+        <div style="min-width:180px">
+          <strong>${city}</strong><br>
+          Last visited: ${last}<br>
+          <button onclick="popupMarkTodayCity()">Mark Today</button>
+          <button class="secondary" onclick="popupYesterdayCity()">Mark Yesterday</button>
+          <input type="date" id="popupCityDate">
+          <button onclick="popupSaveCityDate()">Save Date</button>
+          <button class="danger" onclick="popupClearCityDate()">Clear Date</button>
+        </div>
+      `;
+    }
 
-    function redrawZipLayer() {
+    function redrawAllLayers() {
       if (zipLayer) {
         zipLayer.setStyle(zipStyle);
+      }
+      if (cityLayer) {
+        cityLayer.setStyle(cityStyle);
       }
       updateThresholdInput();
       updateLegend();
@@ -324,7 +414,7 @@
     window.popupMarkToday = function () {
       if (!selected) return;
       state.zips[selected] = new Date().toISOString().split("T")[0];
-      redrawZipLayer();
+      redrawAllLayers();
       map.closePopup();
     };
 
@@ -333,7 +423,7 @@
       const d = new Date();
       d.setDate(d.getDate() - 1);
       state.zips[selected] = d.toISOString().split("T")[0];
-      redrawZipLayer();
+      redrawAllLayers();
       map.closePopup();
     };
 
@@ -342,14 +432,45 @@
       const el = document.getElementById("popupDate");
       if (!el || !el.value) return;
       state.zips[selected] = el.value;
-      redrawZipLayer();
+      redrawAllLayers();
       map.closePopup();
     };
 
     window.popupClearDate = function () {
       if (!selected) return;
       delete state.zips[selected];
-      redrawZipLayer();
+      redrawAllLayers();
+      map.closePopup();
+    };
+    window.popupMarkTodayCity = function () {
+      if (!selected || selectedType !== "city") return;
+      state.cities[selected] = new Date().toISOString().split("T")[0];
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupYesterdayCity = function () {
+      if (!selected || selectedType !== "city") return;
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      state.cities[selected] = d.toISOString().split("T")[0];
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupSaveCityDate = function () {
+      if (!selected || selectedType !== "city") return;
+      const el = document.getElementById("popupCityDate");
+      if (!el || !el.value) return;
+      state.cities[selected] = el.value;
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupClearCityDate = function () {
+      if (!selected || selectedType !== "city") return;
+      delete state.cities[selected];
+      redrawAllLayers();
       map.closePopup();
     };
 
@@ -414,9 +535,12 @@
       zipLayer = L.geoJSON(data, {
         style: zipStyle,
         onEachFeature: (feature, layer) => {
+          bindZipTooltip(layer, feature);
+
           layer.on("click", () => {
             selected = zipCodeFromFeature(feature);
-            redrawZipLayer();
+            selectedType = "zip";
+            redrawAllLayers();
             layer.bindPopup(popupHtml(selected)).openPopup();
           });
         }
@@ -429,6 +553,28 @@
       updateThresholdInput();
       updateLegend();
       updateStats();
+    }
+
+    async function renderCityData(data) {
+      if (cityLayer) {
+        map.removeLayer(cityLayer);
+      }
+
+      cityLayer = L.geoJSON(data, {
+        style: cityStyle,
+        onEachFeature: (feature, layer) => {
+          const city = cityNameFromFeature(feature);
+
+          layer.on("click", () => {
+            selected = city;
+            selectedType = "city";
+            redrawAllLayers();
+            layer.bindPopup(cityPopupHtml(city)).openPopup();
+          });
+        }
+      }).addTo(map);
+
+      cityLayer.bringToFront();
     }
 
     async function loadZipLayer(forceRefresh = false) {
@@ -452,6 +598,28 @@
           await renderZipData(cached);
         } else {
           document.getElementById("stats").innerHTML = "Could not load ZIP shapes yet. Open once with internet so the phone can save them.";
+        }
+      }
+    }
+    async function loadCityLayer(forceRefresh = false) {
+      try {
+        if (!forceRefresh) {
+          const cached = await cacheGet(CITY_CACHE_KEY);
+          if (cached) {
+            await renderCityData(cached);
+          }
+        }
+
+        const res = await fetch(CITY_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("network failed");
+        const data = await res.json();
+        const filtered = filterNorth(data);
+        await cachePut(CITY_CACHE_KEY, filtered);
+        await renderCityData(filtered);
+      } catch (err) {
+        const cached = await cacheGet(CITY_CACHE_KEY);
+        if (cached) {
+          await renderCityData(cached);
         }
       }
     }
@@ -479,12 +647,12 @@
 
     document.getElementById("zipFill").addEventListener("change", (e) => {
       state.settings.zipFill = e.target.value;
-      redrawZipLayer();
+      redrawAllLayers();
     });
 
     document.getElementById("zipWeight").addEventListener("input", (e) => {
       state.settings.zipWeight = Number(e.target.value);
-      redrawZipLayer();
+      redrawAllLayers();
     });
 
     document.getElementById("timeMode").addEventListener("change", (e) => {
@@ -492,7 +660,7 @@
       const current = Number(state.settings.thresholdValue || 12);
       if (state.settings.timeMode === "days" && current > 365) state.settings.thresholdValue = 365;
       if (state.settings.timeMode === "weeks" && current > 52) state.settings.thresholdValue = 52;
-      redrawZipLayer();
+      redrawAllLayers();
     });
 
     document.getElementById("thresholdValue").addEventListener("change", (e) => {
@@ -500,29 +668,39 @@
       const max = getMode() === "days" ? 365 : 52;
       state.settings.thresholdValue = Number.isFinite(val) ? Math.max(1, Math.min(max, val)) : (getMode() === "days" ? 30 : 12);
       e.target.value = state.settings.thresholdValue;
-      redrawZipLayer();
+      redrawAllLayers();
     });
 
     document.getElementById("refreshZipBtn").addEventListener("click", () => loadZipLayer(true));
 
     document.getElementById("markTodayBtn").addEventListener("click", () => {
       if (!selected) return;
-      state.zips[selected] = new Date().toISOString().split("T")[0];
-      redrawZipLayer();
+      const today = new Date().toISOString().split("T")[0];
+
+      if (selectedType === "zip") state.zips[selected] = today;
+      if (selectedType === "city") state.cities[selected] = today;
+
+      redrawAllLayers();
     });
 
     document.getElementById("setDateBtn").addEventListener("click", () => {
       if (!selected) return;
       const d = document.getElementById("date").value;
       if (!d) return;
-      state.zips[selected] = d;
-      redrawZipLayer();
+
+      if (selectedType === "zip") state.zips[selected] = d;
+      if (selectedType === "city") state.cities[selected] = d;
+
+      redrawAllLayers();
     });
 
     document.getElementById("clearDateBtn").addEventListener("click", () => {
       if (!selected) return;
-      delete state.zips[selected];
-      redrawZipLayer();
+
+      if (selectedType === "zip") delete state.zips[selected];
+      if (selectedType === "city") delete state.cities[selected];
+
+      redrawAllLayers();
     });
 
     function findZip(query) {
@@ -538,7 +716,7 @@
         if (code === zip) {
           found = true;
           selected = zip;
-          redrawZipLayer();
+          redrawAllLayers();
           map.fitBounds(layer.getBounds(), { padding: [20, 20] });
           layer.bindPopup(popupHtml(zip)).openPopup();
         }
@@ -548,17 +726,51 @@
     }
 
     document.getElementById("searchBtn").addEventListener("click", () => {
-      const zip = findZip(document.getElementById("searchInput").value);
-      if (!zip || !zoomToZip(zip)) {
-        alert("No ZIP match found.");
+      const raw = document.getElementById("searchInput").value.trim();
+      const zip = findZip(raw);
+      let foundCity = false;
+
+      if (cityLayer && raw) {
+        cityLayer.eachLayer(layer => {
+          const city = cityNameFromFeature(layer.feature).toLowerCase();
+          if (!foundCity && city.includes(raw.toLowerCase())) {
+            foundCity = true;
+            selected = cityNameFromFeature(layer.feature);
+            selectedType = "city";
+            redrawAllLayers();
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+            layer.bindPopup(cityPopupHtml(selected)).openPopup();
+          }
+        });
+      }
+
+      if (!foundCity && (!zip || !zoomToZip(zip))) {
+        alert("No city or ZIP match found.");
       }
     });
 
     document.getElementById("searchInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
-        const zip = findZip(e.target.value);
-        if (!zip || !zoomToZip(zip)) {
-          alert("No ZIP match found.");
+        const raw = e.target.value.trim();
+        const zip = findZip(raw);
+        let foundCity = false;
+
+        if (cityLayer && raw) {
+          cityLayer.eachLayer(layer => {
+            const city = cityNameFromFeature(layer.feature).toLowerCase();
+            if (!foundCity && city.includes(raw.toLowerCase())) {
+              foundCity = true;
+              selected = cityNameFromFeature(layer.feature);
+              selectedType = "city";
+              redrawAllLayers();
+              map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+              layer.bindPopup(cityPopupHtml(selected)).openPopup();
+            }
+          });
+        }
+
+        if (!foundCity && (!zip || !zoomToZip(zip))) {
+          alert("No city or ZIP match found.");
         }
       }
     });
@@ -567,6 +779,7 @@
     updateLegend();
     updateStats();
     loadZipLayer(false);
+    loadCityLayer(false);
   </script>
 </body>
 </html>
