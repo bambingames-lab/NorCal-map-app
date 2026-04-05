@@ -59,8 +59,7 @@
       backdrop-filter: blur(10px);
     }
     .panel.open { display:block; }
-
-    .team-panel{ left:12px; right:auto; display:none; }
+    .team-panel { left:12px; right:auto; display:none; }
 
     .panel-header {
       position:sticky; top:0; z-index:2;
@@ -201,38 +200,38 @@
       <h1>Teams</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Choose team colors, assign the selected area, and control the follow-up gradient from one team color to another.</div>
+      <div class="small">Choose team colors here, assign the selected area, and choose which team colors drive the follow-up gradient.</div>
 
       <div class="section">
         <div class="section-title">Team colors</div>
-        <label for="team1Color">Team 1 color</label>
-        <input id="team1Color" type="color">
-        <label for="team2Color">Team 2 color</label>
-        <input id="team2Color" type="color">
-        <label for="team3Color">Team 3 color</label>
-        <input id="team3Color" type="color">
-        <label for="team4Color">Team 4 color</label>
-        <input id="team4Color" type="color">
-        <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
+        <label for="team1ColorTop">Team 1 color</label>
+        <input id="team1ColorTop" type="color">
+        <label for="team2ColorTop">Team 2 color</label>
+        <input id="team2ColorTop" type="color">
+        <label for="team3ColorTop">Team 3 color</label>
+        <input id="team3ColorTop" type="color">
+        <label for="team4ColorTop">Team 4 color</label>
+        <input id="team4ColorTop" type="color">
+        <button id="saveTeamColorsTop" class="secondary">Save team colors</button>
       </div>
 
       <div class="section">
         <div class="section-title">Gradient by teams</div>
-        <label for="gradientStartTeam">Recent side team</label>
-        <select id="gradientStartTeam">
+        <label for="gradientStartTeamTop">Recent side team</label>
+        <select id="gradientStartTeamTop">
           <option value="team1">Team 1</option>
           <option value="team2">Team 2</option>
           <option value="team3">Team 3</option>
           <option value="team4">Team 4</option>
         </select>
-        <label for="gradientEndTeam">Ready again side team</label>
-        <select id="gradientEndTeam">
+        <label for="gradientEndTeamTop">Ready again side team</label>
+        <select id="gradientEndTeamTop">
           <option value="team1">Team 1</option>
           <option value="team2">Team 2</option>
           <option value="team3">Team 3</option>
           <option value="team4">Team 4</option>
         </select>
-        <button id="saveGradientTeamsBtn" class="secondary">Save gradient teams</button>
+        <button id="saveGradientTeamsTop" class="secondary">Save gradient teams</button>
       </div>
 
       <div class="section">
@@ -295,6 +294,36 @@
           <option value="on">On</option>
         </select>
         <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
+      </div>
+
+      <div class="section" style="display:none;">
+        <div class="section-title">Gradient colors</div>
+        <label for="colorRecent">Recent</label>
+        <input id="colorRecent" type="color">
+        <label for="colorEarly">Early middle</label>
+        <input id="colorEarly" type="color">
+        <label for="colorMid">Middle</label>
+        <input id="colorMid" type="color">
+        <label for="colorLate">Late middle</label>
+        <input id="colorLate" type="color">
+        <label for="colorOverdue">Overdue</label>
+        <input id="colorOverdue" type="color">
+        <button id="resetGradientBtn" class="secondary">Reset gradient</button>
+      </div>
+
+      <div class="section" style="display:none;">
+        <div class="section-title">Teams</div>
+        <label for="teamSelect">Selected area team</label>
+        <select id="teamSelect">
+          <option value="">None</option>
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+        <button id="applyTeamBtn" class="secondary">Apply team to selected area</button>
+        <button id="clearTeamBtn" class="secondary">Clear team from selected area</button>
+        <div class="small">Team color shows as a border accent on the selected ZIP or city.</div>
       </div>
 
       <div class="section">
@@ -398,6 +427,8 @@
       };
       state.zips = state.zips || {};
       state.cities = state.cities || {};
+      state.zipTeams = state.zipTeams || {};
+      state.cityTeams = state.cityTeams || {};
       state.zipTeams = state.zipTeams || {};
       state.cityTeams = state.cityTeams || {};
     }
@@ -952,12 +983,17 @@
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
     document.getElementById("showZipLabels").value = state.settings.showZipLabels ? "on" : "off";
     document.getElementById("timeMode").value = getMode();
-    document.getElementById("team1Color").value = (state.settings.teamColors || {}).team1 || "#2563eb";
-    document.getElementById("team2Color").value = (state.settings.teamColors || {}).team2 || "#9333ea";
-    document.getElementById("team3Color").value = (state.settings.teamColors || {}).team3 || "#ec4899";
-    document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";
-    document.getElementById("gradientStartTeam").value = (state.settings.teamGradient || {}).startTeam || "team1";
-    document.getElementById("gradientEndTeam").value = (state.settings.teamGradient || {}).endTeam || "team4";
+    document.getElementById("colorRecent").value = (state.settings.gradient || {}).recent || "#b91c1c";
+    document.getElementById("colorEarly").value = (state.settings.gradient || {}).early || "#ef4444";
+    document.getElementById("colorMid").value = (state.settings.gradient || {}).mid || "#f59e0b";
+    document.getElementById("colorLate").value = (state.settings.gradient || {}).late || "#fde047";
+    document.getElementById("colorOverdue").value = (state.settings.gradient || {}).overdue || "#22c55e";
+    document.getElementById("team1ColorTop").value = (state.settings.teamColors || {}).team1 || "#2563eb";
+    document.getElementById("team2ColorTop").value = (state.settings.teamColors || {}).team2 || "#9333ea";
+    document.getElementById("team3ColorTop").value = (state.settings.teamColors || {}).team3 || "#ec4899";
+    document.getElementById("team4ColorTop").value = (state.settings.teamColors || {}).team4 || "#0f766e";
+    document.getElementById("gradientStartTeamTop").value = (state.settings.teamGradient || {}).startTeam || "team1";
+    document.getElementById("gradientEndTeamTop").value = (state.settings.teamGradient || {}).endTeam || "team4";
     document.getElementById("teamSelectTop").value = "";
     updateThresholdInput();
 
@@ -975,21 +1011,20 @@
       state.settings.showZipLabels = e.target.value === "on";
       redrawAllLayers();
     });
-
-    document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
+    document.getElementById("saveTeamColorsTop").addEventListener("click", () => {
       state.settings.teamColors = {
-        team1: document.getElementById("team1Color").value,
-        team2: document.getElementById("team2Color").value,
-        team3: document.getElementById("team3Color").value,
-        team4: document.getElementById("team4Color").value
+        team1: document.getElementById("team1ColorTop").value,
+        team2: document.getElementById("team2ColorTop").value,
+        team3: document.getElementById("team3ColorTop").value,
+        team4: document.getElementById("team4ColorTop").value
       };
       redrawAllLayers();
     });
 
-    document.getElementById("saveGradientTeamsBtn").addEventListener("click", () => {
+    document.getElementById("saveGradientTeamsTop").addEventListener("click", () => {
       state.settings.teamGradient = {
-        startTeam: document.getElementById("gradientStartTeam").value,
-        endTeam: document.getElementById("gradientEndTeam").value
+        startTeam: document.getElementById("gradientStartTeamTop").value,
+        endTeam: document.getElementById("gradientEndTeamTop").value
       };
       redrawAllLayers();
     });
@@ -1008,6 +1043,56 @@
     });
 
     document.getElementById("clearTeamBtnTop").addEventListener("click", () => {
+      if (!selected) return;
+      if (selectedType === "zip" && state.zipTeams) delete state.zipTeams[selected];
+      if (selectedType === "city" && state.cityTeams) delete state.cityTeams[selected];
+      redrawAllLayers();
+    });
+
+    function syncGradientFromInputs() {
+      state.settings.gradient = state.settings.gradient || {};
+      state.settings.gradient.recent = document.getElementById("colorRecent").value;
+      state.settings.gradient.early = document.getElementById("colorEarly").value;
+      state.settings.gradient.mid = document.getElementById("colorMid").value;
+      state.settings.gradient.late = document.getElementById("colorLate").value;
+      state.settings.gradient.overdue = document.getElementById("colorOverdue").value;
+      redrawAllLayers();
+    }
+
+    ["colorRecent","colorEarly","colorMid","colorLate","colorOverdue"].forEach(id => {
+      document.getElementById(id).addEventListener("input", syncGradientFromInputs);
+    });
+
+    document.getElementById("resetGradientBtn").addEventListener("click", () => {
+      state.settings.gradient = {
+        recent: "#b91c1c",
+        early: "#ef4444",
+        mid: "#f59e0b",
+        late: "#fde047",
+        overdue: "#22c55e"
+      };
+      document.getElementById("colorRecent").value = state.settings.gradient.recent;
+      document.getElementById("colorEarly").value = state.settings.gradient.early;
+      document.getElementById("colorMid").value = state.settings.gradient.mid;
+      document.getElementById("colorLate").value = state.settings.gradient.late;
+      document.getElementById("colorOverdue").value = state.settings.gradient.overdue;
+      redrawAllLayers();
+    });
+
+    document.getElementById("applyTeamBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const team = document.getElementById("teamSelect").value;
+      if (selectedType === "zip") {
+        state.zipTeams = state.zipTeams || {};
+        if (team) state.zipTeams[selected] = team;
+      } else {
+        state.cityTeams = state.cityTeams || {};
+        if (team) state.cityTeams[selected] = team;
+      }
+      redrawAllLayers();
+    });
+
+    document.getElementById("clearTeamBtn").addEventListener("click", () => {
       if (!selected) return;
       if (selectedType === "zip" && state.zipTeams) delete state.zipTeams[selected];
       if (selectedType === "city" && state.cityTeams) delete state.cityTeams[selected];
