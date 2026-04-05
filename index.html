@@ -24,24 +24,25 @@
     #map { height:100vh; width:100vw; background:#000000; }
 
         .topbar{
-      position:absolute; left:12px; right:12px; top:12px; z-index:1300;
+      position:absolute; left:0; right:0; top:0; z-index:1300;
       display:flex; align-items:center; justify-content:space-between; gap:12px;
-      background:rgba(157,230,0,.96);
-      border:1px solid rgba(0,0,0,.18);
-      border-radius:18px; box-shadow:var(--shadow);
-      padding:10px 12px;
+      background:rgba(157,230,0,.98);
+      border-bottom:1px solid rgba(0,0,0,.18);
+      box-shadow:var(--shadow);
+      padding:14px 16px;
+      border-radius:0;
     }
 
     .topbar-title{
       font-weight:800;
       color:#000;
       letter-spacing:.2px;
-      font-size:18px;
+      font-size:20px;
       line-height:1;
     }
 
     .menuBtn {
-      width:auto; padding:10px 14px; border:none; border-radius:12px;
+      width:auto; padding:10px 14px; border:none; border-radius:10px;
       background:#000; box-shadow:none;
       font-weight:700; cursor:pointer; color:var(--primary);
       border:1px solid rgba(157,230,0,.55);
@@ -50,7 +51,7 @@
     .menuBtn.hidden { display:none; }
 
     .panel {
-      position:absolute; top:74px; right:12px; z-index:1290;
+      position:absolute; top:66px; right:12px; z-index:1290;
       width:310px; max-width:calc(100vw - 24px);
       background:rgba(255,255,255,.985); border-radius:18px;
       box-shadow:var(--shadow); border:1px solid var(--panel-border);
@@ -135,6 +136,22 @@
     .leaflet-popup-content .secondary { background:var(--secondary); color:#000; }
     .leaflet-popup-content .danger { background:linear-gradient(180deg, #ea7a7a, var(--danger)); color:#fff; }
 
+
+    .leaflet-top.leaflet-left{
+      top:72px;
+    }
+
+    .leaflet-control-zoom{
+      border-radius:12px !important;
+      overflow:hidden;
+      box-shadow:var(--shadow);
+      border:1px solid rgba(0,0,0,.14);
+    }
+
+    .leaflet-control-zoom a{
+      color:#000 !important;
+    }
+
     .zip-code-label {
       background: rgba(255,255,255,0.92);
       border: 1px solid #d5e7d8;
@@ -212,6 +229,36 @@
       </div>
 
       <div class="section">
+        <div class="section-title">Gradient colors</div>
+        <label for="colorRecent">Recent</label>
+        <input id="colorRecent" type="color">
+        <label for="colorEarly">Early middle</label>
+        <input id="colorEarly" type="color">
+        <label for="colorMid">Middle</label>
+        <input id="colorMid" type="color">
+        <label for="colorLate">Late middle</label>
+        <input id="colorLate" type="color">
+        <label for="colorOverdue">Overdue</label>
+        <input id="colorOverdue" type="color">
+        <button id="resetGradientBtn" class="secondary">Reset gradient</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Teams</div>
+        <label for="teamSelect">Selected area team</label>
+        <select id="teamSelect">
+          <option value="">None</option>
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+        <button id="applyTeamBtn" class="secondary">Apply team to selected area</button>
+        <button id="clearTeamBtn" class="secondary">Clear team from selected area</button>
+        <div class="small">Team color shows as a border accent on the selected ZIP or city.</div>
+      </div>
+
+      <div class="section">
         <div class="section-title">Quick actions</div>
         <button id="markTodayBtn">Mark selected ZIP today</button>
         <input id="date" type="date">
@@ -222,7 +269,7 @@
       <div class="section">
         <div class="section-title">Legend</div>
         <div class="legend">
-          <div></div><div></div><div></div><div></div><div></div>
+          <div id="legend1"></div><div id="legend2"></div><div id="legend3"></div><div id="legend4"></div><div id="legend5"></div>
         </div>
         <div class="legend-labels">
           <span>Recent</span>
@@ -264,7 +311,14 @@
           zipWeight: 3.5,
           timeMode: "weeks",
           thresholdValue: 12,
-          showZipLabels: false
+          showZipLabels: false,
+          gradient: {
+            recent: "#b91c1c",
+            early: "#ef4444",
+            mid: "#f59e0b",
+            late: "#fde047",
+            overdue: "#22c55e"
+          }
         },
         zips: {},
         cities: {}
@@ -276,8 +330,17 @@
       if (!state.settings.zipFill) state.settings.zipFill = "none";
       if (!state.settings.zipWeight) state.settings.zipWeight = 3.5;
       if (state.settings.showZipLabels === undefined) state.settings.showZipLabels = false;
+      state.settings.gradient = state.settings.gradient || {
+        recent: "#b91c1c",
+        early: "#ef4444",
+        mid: "#f59e0b",
+        late: "#fde047",
+        overdue: "#22c55e"
+      };
       state.zips = state.zips || {};
       state.cities = state.cities || {};
+      state.zipTeams = state.zipTeams || {};
+      state.cityTeams = state.cityTeams || {};
     }
 
     let zipLayer = null;
@@ -314,12 +377,13 @@
 
       const elapsed = elapsedUnits(dateStr);
       const target = getThreshold();
+      const g = state.settings.gradient || {};
 
-      if (elapsed < target * 0.20) return "#b91c1c";
-      if (elapsed < target * 0.45) return "#ef4444";
-      if (elapsed < target * 0.70) return "#f59e0b";
-      if (elapsed < target) return "#fde047";
-      return "#22c55e";
+      if (elapsed < target * 0.20) return g.recent || "#b91c1c";
+      if (elapsed < target * 0.45) return g.early || "#ef4444";
+      if (elapsed < target * 0.70) return g.mid || "#f59e0b";
+      if (elapsed < target) return g.late || "#fde047";
+      return g.overdue || "#22c55e";
     }
 
     function zipCodeFromFeature(feature) {
@@ -351,12 +415,29 @@
       const last = state.cities[city];
 
       return {
-        color: isSelected ? "#2563eb" : "#ffffff",
+        color: teamBorderColor("city", city, isSelected ? "#2563eb" : "#ffffff"),
         weight: isSelected ? 2.5 : 1.2,
         opacity: 1,
         fillColor: zoneColor(last),
         fillOpacity: last ? 0.68 : 0.18
       };
+    }
+
+    const TEAM_COLORS = {
+      team1: "#2563eb",
+      team2: "#9333ea",
+      team3: "#ec4899",
+      team4: "#0f766e"
+    };
+
+    function getAreaTeam(type, key) {
+      if (type === "zip") return (state.zipTeams || {})[key] || "";
+      return (state.cityTeams || {})[key] || "";
+    }
+
+    function teamBorderColor(type, key, fallback) {
+      const team = getAreaTeam(type, key);
+      return TEAM_COLORS[team] || fallback;
     }
 
     function bindZipTooltip(layer, feature) {
@@ -400,7 +481,7 @@
       const last = state.zips[zip];
 
       return {
-        color: isSelected ? "#2563eb" : "#111827",
+        color: teamBorderColor("zip", zip, isSelected ? "#2563eb" : "#111827"),
         weight: isSelected ? baseWeight + 1.1 : baseWeight,
         opacity: 0.92,
         fillColor: zoneColor(last),
@@ -414,6 +495,12 @@
 
     function updateLegend() {
       document.getElementById("legendTarget").textContent = formatTargetLabel();
+      const g = state.settings.gradient || {};
+      document.getElementById("legend1").style.background = g.recent || "#b91c1c";
+      document.getElementById("legend2").style.background = g.early || "#ef4444";
+      document.getElementById("legend3").style.background = g.mid || "#f59e0b";
+      document.getElementById("legend4").style.background = g.late || "#fde047";
+      document.getElementById("legend5").style.background = g.overdue || "#22c55e";
     }
 
     function updateThresholdInput() {
@@ -441,11 +528,13 @@
         if (selectedType === "zip") {
           selectedText =
             "<strong>Selected ZIP:</strong> " + selected +
-            "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set");
+            "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set") +
+            "<br><strong>Team:</strong> " + (getAreaTeam("zip", selected) || "None");
         } else {
           selectedText =
             "<strong>Selected city:</strong> " + selected +
-            "<br><strong>Last visited:</strong> " + (state.cities[selected] || "Not set");
+            "<br><strong>Last visited:</strong> " + (state.cities[selected] || "Not set") +
+            "<br><strong>Team:</strong> " + (getAreaTeam("city", selected) || "None");
         }
       }
 
@@ -735,6 +824,11 @@
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
     document.getElementById("showZipLabels").value = state.settings.showZipLabels ? "on" : "off";
     document.getElementById("timeMode").value = getMode();
+    document.getElementById("colorRecent").value = (state.settings.gradient || {}).recent || "#b91c1c";
+    document.getElementById("colorEarly").value = (state.settings.gradient || {}).early || "#ef4444";
+    document.getElementById("colorMid").value = (state.settings.gradient || {}).mid || "#f59e0b";
+    document.getElementById("colorLate").value = (state.settings.gradient || {}).late || "#fde047";
+    document.getElementById("colorOverdue").value = (state.settings.gradient || {}).overdue || "#22c55e";
     updateThresholdInput();
 
     document.getElementById("zipFill").addEventListener("change", (e) => {
@@ -749,6 +843,56 @@
 
     document.getElementById("showZipLabels").addEventListener("change", (e) => {
       state.settings.showZipLabels = e.target.value === "on";
+      redrawAllLayers();
+    });
+
+    function syncGradientFromInputs() {
+      state.settings.gradient = state.settings.gradient || {};
+      state.settings.gradient.recent = document.getElementById("colorRecent").value;
+      state.settings.gradient.early = document.getElementById("colorEarly").value;
+      state.settings.gradient.mid = document.getElementById("colorMid").value;
+      state.settings.gradient.late = document.getElementById("colorLate").value;
+      state.settings.gradient.overdue = document.getElementById("colorOverdue").value;
+      redrawAllLayers();
+    }
+
+    ["colorRecent","colorEarly","colorMid","colorLate","colorOverdue"].forEach(id => {
+      document.getElementById(id).addEventListener("input", syncGradientFromInputs);
+    });
+
+    document.getElementById("resetGradientBtn").addEventListener("click", () => {
+      state.settings.gradient = {
+        recent: "#b91c1c",
+        early: "#ef4444",
+        mid: "#f59e0b",
+        late: "#fde047",
+        overdue: "#22c55e"
+      };
+      document.getElementById("colorRecent").value = state.settings.gradient.recent;
+      document.getElementById("colorEarly").value = state.settings.gradient.early;
+      document.getElementById("colorMid").value = state.settings.gradient.mid;
+      document.getElementById("colorLate").value = state.settings.gradient.late;
+      document.getElementById("colorOverdue").value = state.settings.gradient.overdue;
+      redrawAllLayers();
+    });
+
+    document.getElementById("applyTeamBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const team = document.getElementById("teamSelect").value;
+      if (selectedType === "zip") {
+        state.zipTeams = state.zipTeams || {};
+        if (team) state.zipTeams[selected] = team;
+      } else {
+        state.cityTeams = state.cityTeams || {};
+        if (team) state.cityTeams[selected] = team;
+      }
+      redrawAllLayers();
+    });
+
+    document.getElementById("clearTeamBtn").addEventListener("click", () => {
+      if (!selected) return;
+      if (selectedType === "zip" && state.zipTeams) delete state.zipTeams[selected];
+      if (selectedType === "city" && state.cityTeams) delete state.cityTeams[selected];
       redrawAllLayers();
     });
 
