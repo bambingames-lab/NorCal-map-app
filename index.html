@@ -60,6 +60,8 @@
     }
     .panel.open { display:block; }
 
+    .team-panel{ left:12px; right:auto; display:none; }
+
     .panel-header {
       position:sticky; top:0; z-index:2;
       display:flex; align-items:center; justify-content:space-between; gap:8px;
@@ -199,7 +201,7 @@
       <h1>Teams</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Choose team colors, assign the selected area, and control the gradient from one team color to another.</div>
+      <div class="small">Choose team colors, assign the selected area, and control the follow-up gradient from one team color to another.</div>
 
       <div class="section">
         <div class="section-title">Team colors</div>
@@ -215,7 +217,7 @@
       </div>
 
       <div class="section">
-        <div class="section-title">Gradient teams</div>
+        <div class="section-title">Gradient by teams</div>
         <label for="gradientStartTeam">Recent side team</label>
         <select id="gradientStartTeam">
           <option value="team1">Team 1</option>
@@ -355,6 +357,16 @@
             mid: "#f59e0b",
             late: "#fde047",
             overdue: "#22c55e"
+          },
+          teamColors: {
+            team1: "#2563eb",
+            team2: "#9333ea",
+            team3: "#ec4899",
+            team4: "#0f766e"
+          },
+          teamGradient: {
+            startTeam: "team1",
+            endTeam: "team4"
           }
         },
         zips: {},
@@ -373,6 +385,16 @@
         mid: "#f59e0b",
         late: "#fde047",
         overdue: "#22c55e"
+      };
+      state.settings.teamColors = state.settings.teamColors || {
+        team1: "#2563eb",
+        team2: "#9333ea",
+        team3: "#ec4899",
+        team4: "#0f766e"
+      };
+      state.settings.teamGradient = state.settings.teamGradient || {
+        startTeam: "team1",
+        endTeam: "team4"
       };
       state.zips = state.zips || {};
       state.cities = state.cities || {};
@@ -467,12 +489,45 @@
       };
     }
 
-    const TEAM_COLORS = {
-      team1: "#2563eb",
-      team2: "#9333ea",
-      team3: "#ec4899",
-      team4: "#0f766e"
-    };
+    function getTeamColors() {
+      return state.settings.teamColors || {
+        team1: "#2563eb",
+        team2: "#9333ea",
+        team3: "#ec4899",
+        team4: "#0f766e"
+      };
+    }
+
+    function hexToRgb(hex) {
+      const clean = String(hex || "").replace("#", "");
+      const full = clean.length === 3 ? clean.split("").map(c => c + c).join("") : clean;
+      const num = parseInt(full, 16);
+      return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+
+    function rgbToHex(r, g, b) {
+      const toHex = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+      return "#" + toHex(r) + toHex(g) + toHex(b);
+    }
+
+    function mixColors(a, b, t) {
+      const ca = hexToRgb(a);
+      const cb = hexToRgb(b);
+      return rgbToHex(
+        ca.r + (cb.r - ca.r) * t,
+        ca.g + (cb.g - ca.g) * t,
+        ca.b + (cb.b - ca.b) * t
+      );
+    }
+
+    function gradientEndpoints() {
+      const colors = getTeamColors();
+      const grad = state.settings.teamGradient || {};
+      return {
+        start: colors[grad.startTeam || "team1"] || "#2563eb",
+        end: colors[grad.endTeam || "team4"] || "#0f766e"
+      };
+    }
 
     function getAreaTeam(type, key) {
       if (type === "zip") return (state.zipTeams || {})[key] || "";
@@ -481,7 +536,8 @@
 
     function teamBorderColor(type, key, fallback) {
       const team = getAreaTeam(type, key);
-      return TEAM_COLORS[team] || fallback;
+      const colors = getTeamColors();
+      return colors[team] || fallback;
     }
 
     function bindZipTooltip(layer, feature) {
@@ -859,11 +915,15 @@
     }
 
     const panel = document.getElementById("panel");
+    const teamPanel = document.getElementById("teamPanel");
     const menuBtn = document.getElementById("menuBtn");
+    const teamMenuBtn = document.getElementById("teamMenuBtn");
 
     function openMenu() {
       panel.classList.add("open");
+      teamPanel.style.display = "none";
       menuBtn.classList.add("hidden");
+      teamMenuBtn.classList.remove("hidden");
     }
 
     function closeMenu() {
@@ -871,8 +931,22 @@
       menuBtn.classList.remove("hidden");
     }
 
+    function openTeamMenu() {
+      teamPanel.style.display = "block";
+      panel.classList.remove("open");
+      teamMenuBtn.classList.add("hidden");
+      menuBtn.classList.remove("hidden");
+    }
+
+    function closeTeamMenu() {
+      teamPanel.style.display = "none";
+      teamMenuBtn.classList.remove("hidden");
+    }
+
     menuBtn.addEventListener("click", openMenu);
+    teamMenuBtn.addEventListener("click", openTeamMenu);
     document.getElementById("closeBtn").addEventListener("click", closeMenu);
+    document.getElementById("closeTeamBtn").addEventListener("click", closeTeamMenu);
 
     document.getElementById("zipFill").value = state.settings.zipFill || "none";
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
@@ -901,27 +975,6 @@
       state.settings.showZipLabels = e.target.value === "on";
       redrawAllLayers();
     });
-
-    document.getElementById("applyTeamBtn").addEventListener("click", () => {
-      if (!selected) return;
-      const team = document.getElementById("teamSelect").value;
-      if (selectedType === "zip") {
-        state.zipTeams = state.zipTeams || {};
-        if (team) state.zipTeams[selected] = team;
-      } else {
-        state.cityTeams = state.cityTeams || {};
-        if (team) state.cityTeams[selected] = team;
-      }
-      redrawAllLayers();
-    });
-
-    document.getElementById("clearTeamBtn").addEventListener("click", () => {
-      if (!selected) return;
-      if (selectedType === "zip" && state.zipTeams) delete state.zipTeams[selected];
-      if (selectedType === "city" && state.cityTeams) delete state.cityTeams[selected];
-      redrawAllLayers();
-    });
-
 
     document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
       state.settings.teamColors = {
