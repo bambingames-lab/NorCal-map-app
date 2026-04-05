@@ -7,21 +7,21 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     :root{
-      --bg:#f5fbf6;
-      --panel:#ffffff;
-      --panel-border:#d9eadb;
-      --text:#173224;
-      --muted:#5f7a69;
-      --primary:#7ac38b;
-      --primary-dark:#4f9e64;
-      --primary-soft:#e8f6eb;
-      --secondary:#eef8f0;
-      --danger:#d95f5f;
-      --shadow:0 14px 34px rgba(31, 68, 43, 0.14);
+      --bg:#000000;
+      --panel:#0b0f0c;
+      --panel-border:#1a2b1f;
+      --text:#d7ffe5;
+      --muted:#7fe3a8;
+      --primary:#39ff88;
+      --primary-dark:#00c853;
+      --primary-soft:#021a0e;
+      --secondary:#06140c;
+      --danger:#ff4d6d;
+      --shadow:0 14px 34px rgba(0,255,136,0.15);
     }
 
     html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; background:var(--bg); color:var(--text); }
-    #map { height:100vh; width:100vw; background:#eef5ef; }
+    #map { height:100vh; width:100vw; background:#000000; }
 
     .app-badge{
       position:absolute; left:12px; top:12px; z-index:1300;
@@ -192,6 +192,11 @@
         </select>
         <label for="zipWeight">ZIP line thickness</label>
         <input id="zipWeight" type="range" min="2" max="6" step="0.5">
+        <label for="showZipLabels">ZIP code labels</label>
+        <select id="showZipLabels">
+          <option value="off">Off</option>
+          <option value="on">On</option>
+        </select>
         <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
       </div>
 
@@ -247,7 +252,7 @@
           zipWeight: 3.5,
           timeMode: "weeks",
           thresholdValue: 12,
-          showZipLabels: true
+          showZipLabels: false
         },
         zips: {},
         cities: {}
@@ -258,7 +263,7 @@
       if (!state.settings.thresholdValue) state.settings.thresholdValue = 12;
       if (!state.settings.zipFill) state.settings.zipFill = "none";
       if (!state.settings.zipWeight) state.settings.zipWeight = 3.5;
-      if (state.settings.showZipLabels === undefined) state.settings.showZipLabels = true;
+      if (state.settings.showZipLabels === undefined) state.settings.showZipLabels = false;
       state.zips = state.zips || {};
       state.cities = state.cities || {};
     }
@@ -625,6 +630,7 @@
       updateThresholdInput();
       updateLegend();
       updateStats();
+      updateZipTooltips();
     }
 
     async function renderCityData(data) {
@@ -713,6 +719,7 @@
 
     document.getElementById("zipFill").value = state.settings.zipFill || "none";
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
+    document.getElementById("showZipLabels").value = state.settings.showZipLabels ? "on" : "off";
     document.getElementById("timeMode").value = getMode();
     updateThresholdInput();
 
@@ -723,6 +730,11 @@
 
     document.getElementById("zipWeight").addEventListener("input", (e) => {
       state.settings.zipWeight = Number(e.target.value);
+      redrawAllLayers();
+    });
+
+    document.getElementById("showZipLabels").addEventListener("change", (e) => {
+      state.settings.showZipLabels = e.target.value === "on";
       redrawAllLayers();
     });
 

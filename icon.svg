@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#7ac38b"/>
-  <rect x="72" y="92" width="368" height="328" rx="34" fill="#ffffff" opacity="0.96"/>
-  <path d="M72 202h368M194 92v328M318 92v328" stroke="#4f9e64" stroke-width="18" fill="none"/>
-  <circle cx="256" cy="256" r="46" fill="#22c55e"/>
+<rect width="512" height="512" rx="96" fill="#000000"/>
+<text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle"
+ font-family="Arial, Helvetica, sans-serif"
+ font-size="220"
+ font-weight="800"
+ fill="#39ff88">TM</text>
 </svg>
