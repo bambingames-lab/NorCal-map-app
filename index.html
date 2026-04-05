@@ -1,572 +1,402 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NorCal Territory Manager</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <style>
-    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; }
-    #map { height:100vh; width:100vw; background:#eef2f7; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NorCal Territory Tracker</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+  body { margin:0; font-family: Arial, sans-serif; }
+  #map { height:100vh; width:100%; }
 
-    .menuBtn {
-      position:absolute; top:12px; right:12px; z-index:1300;
-      width:auto; padding:10px 14px; border:none; border-radius:12px;
-      background:rgba(255,255,255,.96); box-shadow:0 10px 24px rgba(0,0,0,.16);
-      font-weight:700; cursor:pointer;
-    }
-    .menuBtn.hidden { display:none; }
+  .panel{
+    position:absolute;
+    top:10px;
+    left:10px;
+    background:white;
+    padding:12px;
+    border-radius:12px;
+    width:300px;
+    z-index:1000;
+    box-shadow:0 8px 20px rgba(0,0,0,0.2);
+  }
 
-    .panel {
-      position:absolute; top:12px; right:12px; z-index:1290;
-      width:275px; max-width:calc(100vw - 24px);
-      background:rgba(255,255,255,.97); border-radius:14px;
-      box-shadow:0 10px 24px rgba(0,0,0,.18); border:1px solid #dbe4ef;
-      display:none; max-height:calc(100vh - 24px); overflow-y:auto;
-    }
-    .panel.open { display:block; }
+  button, select, input, textarea{
+    width:100%;
+    margin-top:6px;
+    padding:8px;
+    border-radius:8px;
+    box-sizing:border-box;
+    font-size:14px;
+  }
 
-    .panel-header {
-      position:sticky; top:0; z-index:2;
-      display:flex; align-items:center; justify-content:space-between; gap:8px;
-      background:rgba(255,255,255,.98);
-      padding:12px 12px 8px;
-      border-bottom:1px solid #eef2f7;
-      border-top-left-radius:14px; border-top-right-radius:14px;
-    }
+  button{
+    background:#2563eb;
+    color:white;
+    border:none;
+    font-weight:700;
+  }
 
-    .closeBtn {
-      width:auto; min-width:64px; padding:8px 10px; margin:0;
-      background:#2563eb; color:#fff; border:none; border-radius:10px;
-      font-size:12px; font-weight:700; cursor:pointer; flex:0 0 auto; order:-1;
-    }
+  .legend{
+    display:flex;
+    height:14px;
+    margin-top:10px;
+    border-radius:999px;
+    overflow:hidden;
+  }
+  .legend div{flex:1;}
 
-    .panel h1 { font-size:18px; margin:0; line-height:1.2; }
-    .small { font-size:12px; color:#64748b; line-height:1.35; margin-bottom:10px; }
-    .section { border:1px solid #e5e7eb; border-radius:12px; padding:10px; margin-top:10px; background:#fff; }
-    .section-title { font-size:14px; font-weight:700; margin-bottom:8px; }
-    label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; }
+  .small{
+    font-size:12px;
+    color:#666;
+    margin-top:8px;
+    line-height:1.35;
+  }
 
-    input, select, button {
-      width:100%; box-sizing:border-box; border-radius:10px; font-size:14px;
-    }
-    input, select {
-      border:1px solid #d1d5db; padding:10px; background:#fff;
-    }
-    button {
-      border:none; padding:10px 12px; background:#2563eb; color:#fff;
-      font-weight:700; margin-top:8px; cursor:pointer;
-    }
-    button.secondary { background:#eef2ff; color:#111827; }
-    button.danger { background:#dc2626; color:#fff; }
+  .info{
+    margin-top:8px;
+    background:#eff6ff;
+    border:1px solid #dbeafe;
+    border-radius:10px;
+    padding:8px;
+    font-size:13px;
+    line-height:1.35;
+  }
 
-    .row { display:grid; grid-template-columns: 1fr auto; gap:8px; }
-    .row button { width:auto; min-width:72px; margin-top:0; }
+  .leaflet-tooltip.zip-label{
+    background: rgba(255,255,255,0.94);
+    border: 1px solid rgba(17,24,39,0.18);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    color:#111827;
+    font-size:11px;
+    font-weight:700;
+    padding:4px 6px;
+  }
 
-    .legend {
-      display:grid; grid-template-columns:repeat(5, 1fr); height:14px; overflow:hidden;
-      border-radius:999px; border:1px solid #d1d5db; margin-top:8px;
-    }
-    .legend div:nth-child(1){background:#b91c1c;}
-    .legend div:nth-child(2){background:#ef4444;}
-    .legend div:nth-child(3){background:#f59e0b;}
-    .legend div:nth-child(4){background:#fde047;}
-    .legend div:nth-child(5){background:#22c55e;}
-    .legend-labels {
-      display:flex; justify-content:space-between; font-size:11px; color:#64748b; margin-top:5px;
-    }
-
-    .stats {
-      font-size:13px; line-height:1.45; background:#f8fafc;
-      border:1px solid #e2e8f0; border-radius:10px; padding:10px;
-    }
-
-    .leaflet-popup-content button,
-    .leaflet-popup-content input {
-      width:100%; box-sizing:border-box; margin-top:6px; border-radius:8px; padding:8px; font-size:13px;
-    }
-    .leaflet-popup-content button {
-      border:none; background:#2563eb; color:white; font-weight:700; cursor:pointer;
-    }
-    .leaflet-popup-content .secondary { background:#eef2ff; color:#111827; }
-    .leaflet-popup-content .danger { background:#dc2626; color:#fff; }
-  </style>
+  .leaflet-tooltip.city-label{
+    background: rgba(255,255,255,0.94);
+    border: 1px solid rgba(37,99,235,0.22);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    color:#111827;
+    font-size:11px;
+    font-weight:700;
+    padding:4px 6px;
+  }
+</style>
 </head>
 <body>
-  <button id="menuBtn" class="menuBtn">Menu</button>
+<div class="panel">
+  <div><strong>NorCal Territory Tracker</strong></div>
 
-  <div id="panel" class="panel">
-    <div class="panel-header">
-      <button id="closeBtn" class="closeBtn">Close</button>
-      <h1>NorCal Territory Manager</h1>
-    </div>
-    <div style="padding:12px;">
-      <div class="small">This full version lets you track ZIPs, clear dates, search ZIPs, and choose whether the overdue target is based on days or weeks.</div>
+  <label style="display:block;margin-top:10px;font-weight:700;">ZIP fill</label>
+  <select id="zipFill">
+    <option value="none">Transparent</option>
+    <option value="gray">Light Gray</option>
+  </select>
 
-      <div class="section">
-        <div class="section-title">Search ZIP</div>
-        <div class="row">
-          <input id="searchInput" placeholder="Try 95823 or 95926">
-          <button id="searchBtn">Find</button>
-        </div>
-      </div>
+  <button id="markTodayBtn" type="button">Mark City Today</button>
+  <input type="date" id="date">
+  <button id="setDateBtn" type="button">Set Date</button>
 
-      <div class="section">
-        <div class="section-title">Overdue timing</div>
-        <label for="timeMode">Use days or weeks</label>
-        <select id="timeMode">
-          <option value="weeks">Weeks</option>
-          <option value="days">Days</option>
-        </select>
+  <input placeholder="Search city or ZIP..." id="search">
 
-        <label for="thresholdValue">Turn green / overdue after</label>
-        <input id="thresholdValue" type="number" min="1" max="365" step="1">
-        <div class="small">Examples: 12 weeks, 30 days, 60 days, 8 weeks.</div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">ZIP appearance</div>
-        <label for="zipFill">Unchecked ZIP fill</label>
-        <select id="zipFill">
-          <option value="none">Transparent</option>
-          <option value="gray">Light gray</option>
-        </select>
-        <label for="zipWeight">ZIP line thickness</label>
-        <input id="zipWeight" type="range" min="2" max="6" step="0.5">
-        <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Quick actions</div>
-        <button id="markTodayBtn">Mark selected ZIP today</button>
-        <input id="date" type="date">
-        <button id="setDateBtn" class="secondary">Set selected ZIP date</button>
-        <button id="clearDateBtn" class="danger">Clear selected ZIP date</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Legend</div>
-        <div class="legend">
-          <div></div><div></div><div></div><div></div><div></div>
-        </div>
-        <div class="legend-labels">
-          <span>Recent</span>
-          <span id="legendTarget">~ 12 weeks</span>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Coverage</div>
-        <div id="stats" class="stats">Loading…</div>
-      </div>
-    </div>
+  <div class="legend">
+    <div style="background:#b91c1c"></div>
+    <div style="background:#ef4444"></div>
+    <div style="background:#f97316"></div>
+    <div style="background:#facc15"></div>
+    <div style="background:#86efac"></div>
   </div>
+  <div class="small">Recent = red. About 3 months out = green.</div>
 
-  <div id="map"></div>
+  <div id="selectionInfo" class="info">Tap a city to edit it.</div>
+</div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const STORAGE_KEY = "norcal-zip-zone-manager-v4";
-    const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
-    const DB_NAME = "norcalZipZoneDB";
-    const STORE_NAME = "cache";
-    const SOUTH_LIMIT = 38.05;
+<div id="map"></div>
 
-    const map = L.map("map").setView([39.1, -121.4], 7);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+<script>
+const ANGELS_CAMP_LAT = 38.0683;
+const ZIP_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/ZIP_Codes/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson";
+const CITY_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/California_Cities/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson";
 
-    let state = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!state) {
-      state = {
-        settings: {
-          zipFill: "none",
-          zipWeight: 3.5,
-          timeMode: "weeks",
-          thresholdValue: 12
-        },
-        zips: {}
-      };
+const map = L.map('map').setView([39.4, -121.6], 7);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+let state = JSON.parse(localStorage.getItem("mapState")) || {};
+let selectedCityName = null;
+let zips, cities;
+let zipFeatures = [];
+let cityFeatures = [];
+
+function saveState(){
+  localStorage.setItem("mapState", JSON.stringify(state));
+}
+
+function weeks(d){
+  return (Date.now() - new Date(d)) / (1000*60*60*24*7);
+}
+
+function color(date){
+  if(!date) return "#d1d5db";
+  const w = weeks(date);
+  if(w < 2) return "#b91c1c";
+  if(w < 5) return "#ef4444";
+  if(w < 8) return "#f97316";
+  if(w < 11) return "#facc15";
+  return "#86efac";
+}
+
+function zipWeightForZoom(){
+  const z = map.getZoom();
+  if (z <= 6) return 1.1;
+  if (z <= 7) return 1.6;
+  if (z <= 8) return 2.1;
+  if (z <= 9) return 2.8;
+  return 3.8;
+}
+
+function zipStyle(){
+  return {
+    color:"#111827",
+    weight: zipWeightForZoom(),
+    opacity: 0.92,
+    fillColor: document.getElementById("zipFill").value === "gray" ? "#d1d5db" : "transparent",
+    fillOpacity: document.getElementById("zipFill").value === "gray" ? 0.14 : 0
+  };
+}
+
+function cityStyle(feature){
+  const name = feature.properties.NAME || feature.properties.name || "Unknown";
+  const active = selectedCityName === name;
+  return {
+    fillColor: active ? "#22c55e" : color(state[name]?.date),
+    fillOpacity: active ? 0.9 : 0.72,
+    color: "#ffffff",
+    weight: active ? 2.8 : 1.2,
+    opacity: 1
+  };
+}
+
+function updateSelectionInfo(){
+  const box = document.getElementById("selectionInfo");
+  if(!selectedCityName){
+    box.innerHTML = "Tap a city to edit it.";
+    return;
+  }
+  const rec = state[selectedCityName] || {};
+  box.innerHTML = "<strong>" + selectedCityName + "</strong><br>Last checked: " + (rec.date || "Not set");
+}
+
+function resetCityStyles(){
+  if (!cities) return;
+  cities.setStyle(cityStyle);
+}
+
+function refreshZipStyles(){
+  if (zips) zips.setStyle(zipStyle);
+}
+
+function refreshZipLabels(){
+  if (!zips) return;
+  const show = map.getZoom() >= 9;
+  zips.eachLayer(layer => {
+    if (show) {
+      try { layer.openTooltip(); } catch(e) {}
     } else {
-      state.settings = state.settings || {};
-      if (!state.settings.timeMode) state.settings.timeMode = "weeks";
-      if (!state.settings.thresholdValue) state.settings.thresholdValue = 12;
-      if (!state.settings.zipFill) state.settings.zipFill = "none";
-      if (!state.settings.zipWeight) state.settings.zipWeight = 3.5;
-      state.zips = state.zips || {};
+      try { layer.closeTooltip(); } catch(e) {}
     }
+  });
+}
 
-    let zipLayer = null;
-    let selected = null;
-
-    function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function refreshCityLabels(){
+  if (!cities) return;
+  const show = map.getZoom() >= 10;
+  cities.eachLayer(layer => {
+    if (show) {
+      try { layer.openTooltip(); } catch(e) {}
+    } else {
+      try { layer.closeTooltip(); } catch(e) {}
     }
+  });
+}
 
-    function getMode() {
-      return state.settings.timeMode === "days" ? "days" : "weeks";
-    }
+function cityName(feature){
+  return feature.properties.NAME || feature.properties.name || "Unknown";
+}
 
-    function getThreshold() {
-      const raw = Number(state.settings.thresholdValue);
-      if (!Number.isFinite(raw)) return getMode() === "days" ? 30 : 12;
-      const max = getMode() === "days" ? 365 : 52;
-      return Math.max(1, Math.min(max, raw));
-    }
+function featureNorthOfAngelsCamp(feature){
+  try{
+    const center = turf.center(feature);
+    return center.geometry.coordinates[1] >= ANGELS_CAMP_LAT;
+  } catch(e){
+    return true;
+  }
+}
 
-    function elapsedUnits(dateStr) {
-      if (!dateStr) return null;
-      const then = new Date(dateStr + "T00:00:00");
-      const diffDays = Math.max(0, (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24));
-      return getMode() === "days" ? diffDays : (diffDays / 7);
-    }
+function approximateLargestTownByZip(zipFeature, cityFeatureList){
+  let best = null;
+  let bestArea = -1;
 
-    function zoneColor(dateStr) {
-      if (!dateStr) {
-        return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
+  for(const city of cityFeatureList){
+    try{
+      const center = turf.centerOfMass(city);
+      if (turf.booleanPointInPolygon(center, zipFeature)) {
+        const a = turf.area(city);
+        if (a > bestArea) {
+          bestArea = a;
+          best = cityName(city);
+        }
       }
+    }catch(e){}
+  }
+  return best;
+}
 
-      const elapsed = elapsedUnits(dateStr);
-      const target = getThreshold();
+function bindZipLabels(){
+  if (!zips) return;
+  zips.eachLayer(layer => {
+    const props = layer.feature.properties || {};
+    const zip = props.ZCTA5CE20 || props.ZIP || props.NAME || "ZIP";
+    const biggestTown = approximateLargestTownByZip(layer.feature, cityFeatures);
+    const label = biggestTown ? (zip + " - " + biggestTown) : String(zip);
+    layer.bindTooltip(label, {
+      permanent: true,
+      direction: "center",
+      className: "zip-label"
+    });
+  });
+  refreshZipLabels();
+}
 
-      if (elapsed < target * 0.20) return "#b91c1c";
-      if (elapsed < target * 0.45) return "#ef4444";
-      if (elapsed < target * 0.70) return "#f59e0b";
-      if (elapsed < target) return "#fde047";
-      return "#22c55e";
-    }
+async function loadData(){
+  const [zipResp, cityResp] = await Promise.all([
+    fetch(ZIP_URL),
+    fetch(CITY_URL)
+  ]);
 
-    function zipCodeFromFeature(feature) {
-      const p = feature.properties || {};
-      return String(
-        p.ZCTA5CE10 ||
-        p.ZCTA5CE20 ||
-        p.zip_code ||
-        p.ZIP_CODE ||
-        p.zip ||
-        p.name ||
-        ""
-      );
-    }
+  const zipData = await zipResp.json();
+  const cityData = await cityResp.json();
 
-    function zipStyle(feature) {
-      const zip = zipCodeFromFeature(feature);
-      const isSelected = selected === zip;
-      const last = state.zips[zip];
+  zipFeatures = (zipData.features || []).filter(featureNorthOfAngelsCamp);
+  cityFeatures = (cityData.features || []).filter(featureNorthOfAngelsCamp);
 
-      return {
-        color: isSelected ? "#2563eb" : "#111827",
-        weight: isSelected ? Number(state.settings.zipWeight || 3.5) + 1.5 : Number(state.settings.zipWeight || 3.5),
-        opacity: 0.95,
-        fillColor: zoneColor(last),
-        fillOpacity: last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0)
-      };
-    }
-
-    function formatTargetLabel() {
-      return "~ " + getThreshold() + " " + getMode();
-    }
-
-    function updateLegend() {
-      document.getElementById("legendTarget").textContent = formatTargetLabel();
-    }
-
-    function updateThresholdInput() {
-      const mode = getMode();
-      const input = document.getElementById("thresholdValue");
-      input.max = mode === "days" ? "365" : "52";
-      input.value = getThreshold();
-    }
-
-    function updateStats() {
-      const tracked = Object.values(state.zips).filter(Boolean).length;
-      const overdue = Object.values(state.zips).filter(v => {
-        const elapsed = elapsedUnits(v);
-        return elapsed !== null && elapsed >= getThreshold();
-      }).length;
-
-      const selectedText = selected
-        ? "<strong>Selected ZIP:</strong> " + selected + "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set")
-        : "No ZIP selected yet.";
-
-      document.getElementById("stats").innerHTML =
-        selectedText +
-        "<br><br><strong>ZIPs tracked:</strong> " + tracked +
-        "<br><strong>Over " + getThreshold() + " " + getMode() + ":</strong> " + overdue;
-    }
-
-    function popupHtml(zip) {
-      const last = state.zips[zip] || "Not set";
-      return `
-        <div style="min-width:180px">
-          <strong>ZIP ${zip}</strong><br>
-          Last visited: ${last}<br>
-          <button onclick="popupMarkToday()">Mark Today</button>
-          <button class="secondary" onclick="popupYesterday()">Mark Yesterday</button>
-          <input type="date" id="popupDate">
-          <button onclick="popupSaveDate()">Save Date</button>
-          <button class="danger" onclick="popupClearDate()">Clear Date</button>
-        </div>
-      `;
-    }
-
-    function redrawZipLayer() {
-      if (zipLayer) {
-        zipLayer.setStyle(zipStyle);
-      }
-      updateThresholdInput();
-      updateLegend();
-      updateStats();
-      saveState();
-    }
-
-    window.popupMarkToday = function () {
-      if (!selected) return;
-      state.zips[selected] = new Date().toISOString().split("T")[0];
-      redrawZipLayer();
-      map.closePopup();
-    };
-
-    window.popupYesterday = function () {
-      if (!selected) return;
-      const d = new Date();
-      d.setDate(d.getDate() - 1);
-      state.zips[selected] = d.toISOString().split("T")[0];
-      redrawZipLayer();
-      map.closePopup();
-    };
-
-    window.popupSaveDate = function () {
-      if (!selected) return;
-      const el = document.getElementById("popupDate");
-      if (!el || !el.value) return;
-      state.zips[selected] = el.value;
-      redrawZipLayer();
-      map.closePopup();
-    };
-
-    window.popupClearDate = function () {
-      if (!selected) return;
-      delete state.zips[selected];
-      redrawZipLayer();
-      map.closePopup();
-    };
-
-    function centerLat(feature) {
-      const layer = L.geoJSON(feature);
-      const b = layer.getBounds();
-      return (b.getNorth() + b.getSouth()) / 2;
-    }
-
-    function filterNorth(data) {
-      return {
-        type: "FeatureCollection",
-        features: (data.features || []).filter(f => {
-          try {
-            return centerLat(f) >= SOUTH_LIMIT;
-          } catch (e) {
-            return false;
-          }
-        })
-      };
-    }
-
-    function openDb() {
-      return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = (event) => {
-          const db = event.target.result;
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            db.createObjectStore(STORE_NAME);
-          }
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+  zips = L.geoJSON({type:"FeatureCollection", features: zipFeatures}, {
+    style: zipStyle,
+    onEachFeature: (feature, layer) => {
+      const props = feature.properties || {};
+      const zip = props.ZCTA5CE20 || props.ZIP || props.NAME || "ZIP";
+      layer.on("click", () => {
+        const biggestTown = approximateLargestTownByZip(feature, cityFeatures);
+        const text = biggestTown ? "<strong>ZIP " + zip + "</strong><br>Largest town shown: " + biggestTown : "<strong>ZIP " + zip + "</strong>";
+        layer.bindPopup(text).openPopup();
       });
     }
+  }).addTo(map);
 
-    async function cachePut(key, value) {
-      const db = await openDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).put(value, key);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+  cities = L.geoJSON({type:"FeatureCollection", features: cityFeatures}, {
+    style: cityStyle,
+    onEachFeature: (feature, layer) => {
+      const name = cityName(feature);
+      layer.bindTooltip(name, {
+        permanent: true,
+        direction: "center",
+        className: "city-label"
       });
-    }
 
-    async function cacheGet(key) {
-      const db = await openDb();
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, "readonly");
-        const req = tx.objectStore(STORE_NAME).get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+      layer.on("click", () => {
+        selectedCityName = name;
+        resetCityStyles();
+        updateSelectionInfo();
       });
-    }
 
-    async function renderZipData(data) {
-      if (zipLayer) {
-        map.removeLayer(zipLayer);
-      }
-
-      zipLayer = L.geoJSON(data, {
-        style: zipStyle,
-        onEachFeature: (feature, layer) => {
-          layer.on("click", () => {
-            selected = zipCodeFromFeature(feature);
-            redrawZipLayer();
-            layer.bindPopup(popupHtml(selected)).openPopup();
+      layer.on("mouseover", () => {
+        if (selectedCityName !== name) {
+          layer.setStyle({
+            fillOpacity: 0.85,
+            weight: 2.0
           });
         }
-      }).addTo(map);
-
-      try {
-        map.fitBounds(zipLayer.getBounds(), { padding: [20, 20] });
-      } catch (e) {}
-
-      updateThresholdInput();
-      updateLegend();
-      updateStats();
-    }
-
-    async function loadZipLayer(forceRefresh = false) {
-      try {
-        if (!forceRefresh) {
-          const cached = await cacheGet("zipGeoJSONNorth");
-          if (cached) {
-            await renderZipData(cached);
-          }
-        }
-
-        const res = await fetch(ZIP_URL, { cache: "no-store" });
-        if (!res.ok) throw new Error("network failed");
-        const data = await res.json();
-        const filtered = filterNorth(data);
-        await cachePut("zipGeoJSONNorth", filtered);
-        await renderZipData(filtered);
-      } catch (err) {
-        const cached = await cacheGet("zipGeoJSONNorth");
-        if (cached) {
-          await renderZipData(cached);
-        } else {
-          document.getElementById("stats").innerHTML = "Could not load ZIP shapes yet. Open once with internet so the phone can save them.";
-        }
-      }
-    }
-
-    const panel = document.getElementById("panel");
-    const menuBtn = document.getElementById("menuBtn");
-
-    function openMenu() {
-      panel.classList.add("open");
-      menuBtn.classList.add("hidden");
-    }
-
-    function closeMenu() {
-      panel.classList.remove("open");
-      menuBtn.classList.remove("hidden");
-    }
-
-    menuBtn.addEventListener("click", openMenu);
-    document.getElementById("closeBtn").addEventListener("click", closeMenu);
-
-    document.getElementById("zipFill").value = state.settings.zipFill || "none";
-    document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
-    document.getElementById("timeMode").value = getMode();
-    updateThresholdInput();
-
-    document.getElementById("zipFill").addEventListener("change", (e) => {
-      state.settings.zipFill = e.target.value;
-      redrawZipLayer();
-    });
-
-    document.getElementById("zipWeight").addEventListener("input", (e) => {
-      state.settings.zipWeight = Number(e.target.value);
-      redrawZipLayer();
-    });
-
-    document.getElementById("timeMode").addEventListener("change", (e) => {
-      state.settings.timeMode = e.target.value === "days" ? "days" : "weeks";
-      const current = Number(state.settings.thresholdValue || 12);
-      if (state.settings.timeMode === "days" && current > 365) state.settings.thresholdValue = 365;
-      if (state.settings.timeMode === "weeks" && current > 52) state.settings.thresholdValue = 52;
-      redrawZipLayer();
-    });
-
-    document.getElementById("thresholdValue").addEventListener("change", (e) => {
-      const val = Number(e.target.value);
-      const max = getMode() === "days" ? 365 : 52;
-      state.settings.thresholdValue = Number.isFinite(val) ? Math.max(1, Math.min(max, val)) : (getMode() === "days" ? 30 : 12);
-      e.target.value = state.settings.thresholdValue;
-      redrawZipLayer();
-    });
-
-    document.getElementById("refreshZipBtn").addEventListener("click", () => loadZipLayer(true));
-
-    document.getElementById("markTodayBtn").addEventListener("click", () => {
-      if (!selected) return;
-      state.zips[selected] = new Date().toISOString().split("T")[0];
-      redrawZipLayer();
-    });
-
-    document.getElementById("setDateBtn").addEventListener("click", () => {
-      if (!selected) return;
-      const d = document.getElementById("date").value;
-      if (!d) return;
-      state.zips[selected] = d;
-      redrawZipLayer();
-    });
-
-    document.getElementById("clearDateBtn").addEventListener("click", () => {
-      if (!selected) return;
-      delete state.zips[selected];
-      redrawZipLayer();
-    });
-
-    function findZip(query) {
-      return String(query || "").trim().replace(/\D/g, "");
-    }
-
-    function zoomToZip(zip) {
-      if (!zipLayer) return false;
-      let found = false;
-
-      zipLayer.eachLayer(layer => {
-        const code = zipCodeFromFeature(layer.feature);
-        if (code === zip) {
-          found = true;
-          selected = zip;
-          redrawZipLayer();
-          map.fitBounds(layer.getBounds(), { padding: [20, 20] });
-          layer.bindPopup(popupHtml(zip)).openPopup();
-        }
       });
 
-      return found;
+      layer.on("mouseout", () => {
+        if (selectedCityName !== name) resetCityStyles();
+      });
     }
+  }).addTo(map);
 
-    document.getElementById("searchBtn").addEventListener("click", () => {
-      const zip = findZip(document.getElementById("searchInput").value);
-      if (!zip || !zoomToZip(zip)) {
-        alert("No ZIP match found.");
-      }
-    });
+  cities.bringToFront();
+  bindZipLabels();
+  refreshCityLabels();
 
-    document.getElementById("searchInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        const zip = findZip(e.target.value);
-        if (!zip || !zoomToZip(zip)) {
-          alert("No ZIP match found.");
-        }
-      }
-    });
+  const all = L.featureGroup([zips, cities]);
+  map.fitBounds(all.getBounds(), {padding:[20,20]});
+}
 
-    updateThresholdInput();
-    updateLegend();
-    updateStats();
-    loadZipLayer(false);
-  </script>
+document.getElementById("markTodayBtn").addEventListener("click", () => {
+  if(!selectedCityName) return;
+  state[selectedCityName] = state[selectedCityName] || {};
+  state[selectedCityName].date = new Date().toISOString().split("T")[0];
+  saveState();
+  resetCityStyles();
+  updateSelectionInfo();
+});
+
+document.getElementById("setDateBtn").addEventListener("click", () => {
+  if(!selectedCityName) return;
+  const date = document.getElementById("date").value;
+  if (!date) return;
+  state[selectedCityName] = state[selectedCityName] || {};
+  state[selectedCityName].date = date;
+  saveState();
+  resetCityStyles();
+  updateSelectionInfo();
+});
+
+document.getElementById("zipFill").addEventListener("change", refreshZipStyles);
+
+document.getElementById("search").addEventListener("input", e => {
+  const val = e.target.value.toLowerCase().trim();
+  if (!val || !cities || !zips) return;
+
+  let found = false;
+  cities.eachLayer(l => {
+    const nm = cityName(l.feature).toLowerCase();
+    if (!found && nm.includes(val)) {
+      found = true;
+      selectedCityName = cityName(l.feature);
+      resetCityStyles();
+      map.fitBounds(l.getBounds(), {padding:[20,20]});
+      updateSelectionInfo();
+    }
+  });
+
+  if (found) return;
+
+  zips.eachLayer(l => {
+    const props = l.feature.properties || {};
+    const zip = String(props.ZCTA5CE20 || props.ZIP || props.NAME || "").toLowerCase();
+    if (!found && zip.includes(val)) {
+      found = true;
+      map.fitBounds(l.getBounds(), {padding:[20,20]});
+      l.openPopup();
+    }
+  });
+});
+
+map.on("zoomend", () => {
+  refreshZipStyles();
+  refreshZipLabels();
+  refreshCityLabels();
+});
+
+loadData().catch(err => {
+  console.error(err);
+  alert("Could not load live map data.");
+});
+</script>
 </body>
 </html>
