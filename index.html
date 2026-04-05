@@ -41,6 +41,27 @@
       line-height:1;
     }
 
+    .topbar-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+
+    .teamLaunchBtn{
+      width:112px;
+      height:48px;
+      border:none;
+      border-radius:10px;
+      background:#000;
+      box-shadow:none;
+      font-weight:700;
+      cursor:pointer;
+      color:var(--primary);
+      border:1px solid rgba(157,230,0,.55);
+      margin:0;
+      font-size:16px;
+    }
+
     .menuBtn {
       width:auto; padding:10px 14px; border:none; border-radius:10px;
       background:#000; box-shadow:none;
@@ -48,7 +69,7 @@
       border:1px solid rgba(157,230,0,.55);
       margin:0;
     }
-    .menuBtn.hidden { display:none; }
+    .menuBtn.hidden, .teamLaunchBtn.hidden { display:none; }
 
     .panel {
       position:absolute; top:66px; right:12px; z-index:1290;
@@ -189,8 +210,8 @@
 <body>
   <div class="topbar">
     <div class="topbar-title">Territory Manager</div>
-    <div style="display:flex; gap:10px; align-items:center;">
-      <button id="teamMenuBtn" class="menuBtn">Teams</button>
+    <div class="topbar-actions">
+      <button id="teamMenuBtn" class="teamLaunchBtn">Teams</button>
       <button id="menuBtn" class="menuBtn">Menu</button>
     </div>
   </div>
@@ -201,7 +222,7 @@
       <h1>Teams</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Choose team colors here and assign the selected area without opening settings.</div>
+      <div class="small">Choose team colors here, assign areas, and set which teams define the follow-up gradient.</div>
 
       <div class="section">
         <div class="section-title">Team colors</div>
@@ -214,6 +235,26 @@
         <label for="team4Color">Team 4 color</label>
         <input id="team4Color" type="color">
         <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Gradient by teams</div>
+        <label for="gradientStartTeam">Recent side team color</label>
+        <select id="gradientStartTeam">
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+        <label for="gradientEndTeam">Ready again side team color</label>
+        <select id="gradientEndTeam">
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+        <button id="saveGradientTeamsBtn" class="secondary">Save gradient teams</button>
+        <div class="small">The map now fades from one chosen team color to the other as the wait time increases.</div>
       </div>
 
       <div class="section">
@@ -276,21 +317,6 @@
           <option value="on">On</option>
         </select>
         <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Gradient colors</div>
-        <label for="colorRecent">Recent</label>
-        <input id="colorRecent" type="color">
-        <label for="colorEarly">Early middle</label>
-        <input id="colorEarly" type="color">
-        <label for="colorMid">Middle</label>
-        <input id="colorMid" type="color">
-        <label for="colorLate">Late middle</label>
-        <input id="colorLate" type="color">
-        <label for="colorOverdue">Overdue</label>
-        <input id="colorOverdue" type="color">
-        <button id="resetGradientBtn" class="secondary">Reset gradient</button>
       </div>
 
       <div class="section">
@@ -359,6 +385,10 @@
             team2: "#9333ea",
             team3: "#ec4899",
             team4: "#0f766e"
+          },
+          teamGradient: {
+            startTeam: "team1",
+            endTeam: "team4"
           }
         },
         zips: {},
@@ -383,6 +413,10 @@
         team2: "#9333ea",
         team3: "#ec4899",
         team4: "#0f766e"
+      };
+      state.settings.teamGradient = state.settings.teamGradient || {
+        startTeam: "team1",
+        endTeam: "team4"
       };
       state.zips = state.zips || {};
       state.cities = state.cities || {};
@@ -421,6 +455,13 @@
       if (!dateStr) {
         return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
       }
+
+      const elapsed = elapsedUnits(dateStr);
+      const target = getThreshold();
+      const pct = Math.max(0, Math.min(1, elapsed / target));
+      const endpoints = gradientEndpoints();
+      return mixColors(endpoints.start, endpoints.end, pct);
+    }
 
       const elapsed = elapsedUnits(dateStr);
       const target = getThreshold();
@@ -476,6 +517,37 @@
         team2: "#9333ea",
         team3: "#ec4899",
         team4: "#0f766e"
+      };
+    }
+
+    function getAreaTeam(type, key) {    function hexToRgb(hex) {
+      const clean = String(hex || "").replace("#", "");
+      const full = clean.length === 3 ? clean.split("").map(c => c + c).join("") : clean;
+      const num = parseInt(full, 16);
+      return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+
+    function rgbToHex(r, g, b) {
+      const toHex = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+      return "#" + toHex(r) + toHex(g) + toHex(b);
+    }
+
+    function mixColors(a, b, t) {
+      const ca = hexToRgb(a);
+      const cb = hexToRgb(b);
+      return rgbToHex(
+        ca.r + (cb.r - ca.r) * t,
+        ca.g + (cb.g - ca.g) * t,
+        ca.b + (cb.b - ca.b) * t
+      );
+    }
+
+    function gradientEndpoints() {
+      const colors = getTeamColors();
+      const grad = state.settings.teamGradient || {};
+      return {
+        start: colors[grad.startTeam || "team1"] || "#2563eb",
+        end: colors[grad.endTeam || "team4"] || "#0f766e"
       };
     }
 
@@ -545,12 +617,12 @@
 
     function updateLegend() {
       document.getElementById("legendTarget").textContent = formatTargetLabel();
-      const g = state.settings.gradient || {};
-      document.getElementById("legend1").style.background = g.recent || "#b91c1c";
-      document.getElementById("legend2").style.background = g.early || "#ef4444";
-      document.getElementById("legend3").style.background = g.mid || "#f59e0b";
-      document.getElementById("legend4").style.background = g.late || "#fde047";
-      document.getElementById("legend5").style.background = g.overdue || "#22c55e";
+      const endpoints = gradientEndpoints();
+      document.getElementById("legend1").style.background = mixColors(endpoints.start, endpoints.end, 0.0);
+      document.getElementById("legend2").style.background = mixColors(endpoints.start, endpoints.end, 0.25);
+      document.getElementById("legend3").style.background = mixColors(endpoints.start, endpoints.end, 0.5);
+      document.getElementById("legend4").style.background = mixColors(endpoints.start, endpoints.end, 0.75);
+      document.getElementById("legend5").style.background = mixColors(endpoints.start, endpoints.end, 1.0);
     }
 
     function updateThresholdInput() {
@@ -902,15 +974,12 @@
     document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
     document.getElementById("showZipLabels").value = state.settings.showZipLabels ? "on" : "off";
     document.getElementById("timeMode").value = getMode();
-    document.getElementById("colorRecent").value = (state.settings.gradient || {}).recent || "#b91c1c";
-    document.getElementById("colorEarly").value = (state.settings.gradient || {}).early || "#ef4444";
-    document.getElementById("colorMid").value = (state.settings.gradient || {}).mid || "#f59e0b";
-    document.getElementById("colorLate").value = (state.settings.gradient || {}).late || "#fde047";
-    document.getElementById("colorOverdue").value = (state.settings.gradient || {}).overdue || "#22c55e";
     document.getElementById("team1Color").value = (state.settings.teamColors || {}).team1 || "#2563eb";
     document.getElementById("team2Color").value = (state.settings.teamColors || {}).team2 || "#9333ea";
     document.getElementById("team3Color").value = (state.settings.teamColors || {}).team3 || "#ec4899";
     document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";
+    document.getElementById("gradientStartTeam").value = (state.settings.teamGradient || {}).startTeam || "team1";
+    document.getElementById("gradientEndTeam").value = (state.settings.teamGradient || {}).endTeam || "team4";
     document.getElementById("teamSelectTop").value = "";
     updateThresholdInput();
 
@@ -959,39 +1028,27 @@
       redrawAllLayers();
     });
 
-    function syncGradientFromInputs() {
-      state.settings.gradient = state.settings.gradient || {};
-      state.settings.gradient.recent = document.getElementById("colorRecent").value;
-      state.settings.gradient.early = document.getElementById("colorEarly").value;
-      state.settings.gradient.mid = document.getElementById("colorMid").value;
-      state.settings.gradient.late = document.getElementById("colorLate").value;
-      state.settings.gradient.overdue = document.getElementById("colorOverdue").value;
-      redrawAllLayers();
-    }
-
-    ["colorRecent","colorEarly","colorMid","colorLate","colorOverdue"].forEach(id => {
-      document.getElementById(id).addEventListener("input", syncGradientFromInputs);
-    });
-
-    document.getElementById("resetGradientBtn").addEventListener("click", () => {
-      state.settings.gradient = {
-        recent: "#b91c1c",
-        early: "#ef4444",
-        mid: "#f59e0b",
-        late: "#fde047",
-        overdue: "#22c55e"
+    document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
+      state.settings.teamColors = {
+        team1: document.getElementById("team1Color").value,
+        team2: document.getElementById("team2Color").value,
+        team3: document.getElementById("team3Color").value,
+        team4: document.getElementById("team4Color").value
       };
-      document.getElementById("colorRecent").value = state.settings.gradient.recent;
-      document.getElementById("colorEarly").value = state.settings.gradient.early;
-      document.getElementById("colorMid").value = state.settings.gradient.mid;
-      document.getElementById("colorLate").value = state.settings.gradient.late;
-      document.getElementById("colorOverdue").value = state.settings.gradient.overdue;
       redrawAllLayers();
     });
 
-    document.getElementById("applyTeamBtn").addEventListener("click", () => {
+    document.getElementById("saveGradientTeamsBtn").addEventListener("click", () => {
+      state.settings.teamGradient = {
+        startTeam: document.getElementById("gradientStartTeam").value,
+        endTeam: document.getElementById("gradientEndTeam").value
+      };
+      redrawAllLayers();
+    });
+
+    document.getElementById("applyTeamBtnTop").addEventListener("click", () => {
       if (!selected) return;
-      const team = document.getElementById("teamSelect").value;
+      const team = document.getElementById("teamSelectTop").value;
       if (selectedType === "zip") {
         state.zipTeams = state.zipTeams || {};
         if (team) state.zipTeams[selected] = team;
@@ -1002,7 +1059,7 @@
       redrawAllLayers();
     });
 
-    document.getElementById("clearTeamBtn").addEventListener("click", () => {
+    document.getElementById("clearTeamBtnTop").addEventListener("click", () => {
       if (!selected) return;
       if (selectedType === "zip" && state.zipTeams) delete state.zipTeams[selected];
       if (selectedType === "city" && state.cityTeams) delete state.cityTeams[selected];
