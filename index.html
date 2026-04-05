@@ -97,9 +97,9 @@
       border-radius: 6px;
       box-shadow: 0 1px 4px rgba(0,0,0,.12);
       color: #111827;
-      font-size: 11px;
+      font-size: 9px;
       font-weight: 700;
-      padding: 2px 6px;
+      padding: 1px 4px;
     }
   </style>
 </head>
@@ -324,24 +324,22 @@
       const isSelected = selectedType === "zip" && selected === zip;
       const zoom = map.getZoom();
 
-      let baseWeight = Number(state.settings.zipWeight || 3.5);
+      let sliderWeight = Number(state.settings.zipWeight || 3.5);
+      let baseWeight = sliderWeight;
 
-      if (zoom <= 6) baseWeight = 0.6;
-      else if (zoom <= 7) baseWeight = 1.0;
-      else if (zoom <= 8) baseWeight = 1.5;
-      else if (zoom <= 9) baseWeight = 2.2;
+      if (zoom <= 6) baseWeight = Math.max(0.35, sliderWeight * 0.18);
+      else if (zoom <= 7) baseWeight = Math.max(0.55, sliderWeight * 0.28);
+      else if (zoom <= 8) baseWeight = Math.max(0.85, sliderWeight * 0.42);
+      else if (zoom <= 9) baseWeight = Math.max(1.2, sliderWeight * 0.62);
 
-      const visible = zoom >= ZIP_SHOW_ZOOM;
       const last = state.zips[zip];
 
       return {
         color: isSelected ? "#2563eb" : "#111827",
-        weight: isSelected ? baseWeight + 1.2 : baseWeight,
-        opacity: visible ? 0.95 : 0,
+        weight: isSelected ? baseWeight + 1.1 : baseWeight,
+        opacity: 0.92,
         fillColor: zoneColor(last),
-        fillOpacity: visible
-          ? (last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0))
-          : 0
+        fillOpacity: last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0)
       };
     }
 
@@ -615,9 +613,8 @@
         const res = await fetch(ZIP_URL, { cache: "no-store" });
         if (!res.ok) throw new Error("network failed");
         const data = await res.json();
-        const filtered = filterNorth(data);
-        await cachePut("zipGeoJSONNorth", filtered);
-        await renderZipData(filtered);
+        await cachePut("zipGeoJSONNorth", data);
+        await renderZipData(data);
       } catch (err) {
         const cached = await cacheGet("zipGeoJSONNorth");
         if (cached) {
