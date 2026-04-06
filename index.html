@@ -82,16 +82,49 @@
 
     .panel h1 { font-size:20px; margin:0; line-height:1.2; color:#000; }
     .small { font-size:12px; color:#222; line-height:1.45; margin-bottom:10px; }
-    .section { border:1px solid #e7f1e8; border-radius:14px; padding:12px; margin-top:12px; background:#fff; }
-    .section-title { font-size:14px; font-weight:700; margin-bottom:8px; color:#000; }
+    .section { border:1px solid #e7f1e8; border-radius:14px; margin-top:12px; background:#fff; overflow:hidden; }
+    .section-title { font-size:14px; font-weight:700; color:#000; }
+    .section-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px 12px;
+      cursor:pointer;
+      user-select:none;
+      background:#fff;
+    }
+    .section-chevron{
+      font-size:18px;
+      line-height:1;
+      transform:rotate(0deg);
+      transition:transform .18s ease;
+    }
+    .section.collapsed .section-chevron{
+      transform:rotate(-90deg);
+    }
+    .section-content{
+      padding:0 12px 12px;
+    }
+    .section.collapsed .section-content{
+      display:none;
+    }
     label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; color:#000; }
 
     input, select, button {
       width:100%; box-sizing:border-box; border-radius:12px; font-size:14px;
     }
-    input, select {
+    input, select, textarea {
       border:1px solid #cde7a5; padding:11px 12px; background:#fff; color:#000;
       outline:none;
+    }
+
+    textarea{
+      width:100%;
+      box-sizing:border-box;
+      border-radius:12px;
+      min-height:100px;
+      resize:vertical;
     }
     input[type="color"]{
       width:100%; height:44px; padding:4px; border-radius:12px;
@@ -202,18 +235,27 @@
       <h1>Territory Manager</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Track ZIPs and cities, search faster, and manage overdue territories with a polished layout.</div>
+      <div class="small">Track ZIPs and cities, search faster, manage overdue territories, and keep notes for each area.</div>
 
       <div class="section">
-        <div class="section-title">Search ZIP / City</div>
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Search ZIP / City</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
         <div class="row">
           <input id="searchInput" placeholder="Try 95823 or Auburn">
           <button id="searchBtn">Find</button>
         </div>
+        </div>
       </div>
 
       <div class="section">
-        <div class="section-title">Overdue timing</div>
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Overdue timing</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
         <label for="timeMode">Use days, weeks, or months</label>
         <select id="timeMode">
           <option value="weeks">Weeks</option>
@@ -223,10 +265,15 @@
 
         <label for="thresholdValue">Turn ready again after</label>
         <input id="thresholdValue" type="number" min="1" max="365" step="1">
+        </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">ZIP appearance</div>
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">ZIP appearance</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
         <label for="zipFill">Unchecked ZIP fill</label>
         <select id="zipFill">
           <option value="none">Transparent</option>
@@ -240,18 +287,28 @@
           <option value="on">On</option>
         </select>
         <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
+        </div>
       </div>
 
       <div class="section">
-        <div class="section-title">Quick actions</div>
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Quick actions</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
         <button id="markTodayBtn">Mark selected area today</button>
         <input id="date" type="date">
         <button id="setDateBtn" class="secondary">Set selected area date</button>
         <button id="clearDateBtn" class="danger">Clear selected area date</button>
+        </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Legend</div>
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Legend</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
         <div class="legend">
           <div id="legend1"></div><div id="legend2"></div><div id="legend3"></div><div id="legend4"></div><div id="legend5"></div>
         </div>
@@ -259,11 +316,31 @@
           <span>Recent</span>
           <span id="legendTarget">~ 12 weeks</span>
         </div>
+        </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Coverage</div>
-        <div id="stats" class="stats">Loading…</div>
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Area notes</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+          <div class="small">Write notes for the currently selected ZIP or city.</div>
+          <label for="menuNotes">Selected area notes</label>
+          <textarea id="menuNotes" placeholder="Select an area on the map, then add notes here..."></textarea>
+          <button id="saveMenuNotesBtn" class="secondary">Save selected area notes</button>
+          <button id="clearMenuNotesBtn" class="secondary">Clear selected area notes</button>
+        </div>
+      </div>
+
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Coverage</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+          <div id="stats" class="stats">Loading…</div>
+        </div>
       </div>
     </div>
   </div>
@@ -326,7 +403,9 @@
         zipTeams: {},
         cityTeams: {},
         zipGradientTeams: {},
-        cityGradientTeams: {}
+        cityGradientTeams: {},
+        zipNotes: {},
+        cityNotes: {}
       };
     } else {
       state.settings = state.settings || {};
@@ -357,6 +436,8 @@
       state.cityTeams = state.cityTeams || {};
       state.zipGradientTeams = state.zipGradientTeams || {};
       state.cityGradientTeams = state.cityGradientTeams || {};
+      state.zipNotes = state.zipNotes || {};
+      state.cityNotes = state.cityNotes || {};
     }
 
     let zipLayer = null;
@@ -596,6 +677,11 @@
         }
       }
 
+      const menuNotes = document.getElementById("menuNotes");
+      if (menuNotes) {
+        menuNotes.value = getSelectedNotes();
+      }
+
       document.getElementById("stats").innerHTML =
         selectedText +
         "<br><br><strong>ZIPs tracked:</strong> " + trackedZips +
@@ -614,6 +700,16 @@
       updateLegend();
       updateStats();
       saveState();
+    }
+
+    function toggleSection(sectionEl) {
+      sectionEl.classList.toggle("collapsed");
+    }
+
+    function getSelectedNotes() {
+      if (!selected) return "";
+      if (selectedType === "zip") return (state.zipNotes || {})[selected] || "";
+      return (state.cityNotes || {})[selected] || "";
     }
 
     window.popupMarkToday = function () {
@@ -676,6 +772,22 @@
       map.closePopup();
     };
 
+    window.popupSaveNotes = function () {
+      if (!selected) return;
+      const notesEl = document.getElementById("popupNotes");
+      const notes = notesEl ? notesEl.value.trim() : "";
+      if (selectedType === "zip") {
+        if (notes) state.zipNotes[selected] = notes;
+        else delete state.zipNotes[selected];
+      }
+      if (selectedType === "city") {
+        if (notes) state.cityNotes[selected] = notes;
+        else delete state.cityNotes[selected];
+      }
+      redrawAllLayers();
+      map.closePopup();
+    };
+
     window.popupClearDate = function () {
       if (!selected) return;
       if (selectedType === "zip") delete state.zips[selected];
@@ -721,6 +833,9 @@
     function popupHtml(label, last, type, key) {
       const currentTeam = getAreaTeam(type, key) || "";
       const currentGrad = getAreaGradient(type, key) || state.settings.teamGradient || { startTeam: "team1", endTeam: "team4" };
+      const currentNotes = type === "zip"
+        ? ((state.zipNotes || {})[key] || "")
+        : ((state.cityNotes || {})[key] || "");
       return `
         <div style="min-width:220px">
           <strong>${label}</strong><br>
@@ -747,6 +862,10 @@
             <option value="team4" ${currentGrad.endTeam === "team4" ? "selected" : ""}>${teamDisplayName("team4")}</option>
           </select>
           <button class="secondary" onclick="popupSaveTeamsGradient()">Apply Teams Gradient</button>
+
+          <label style="display:block;margin-top:8px;font-weight:700;">Notes</label>
+          <textarea id="popupNotes" placeholder="Add notes for this area...">${currentNotes}</textarea>
+          <button class="secondary" onclick="popupSaveNotes()">Save Notes</button>
 
           <button class="danger" onclick="popupClearDate()">Clear Date</button>
         </div>
@@ -902,6 +1021,26 @@
         team3: document.getElementById("team3Name").value.trim() || "Team 3",
         team4: document.getElementById("team4Name").value.trim() || "Team 4"
       };
+      redrawAllLayers();
+    });
+
+    document.getElementById("saveMenuNotesBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const notes = document.getElementById("menuNotes").value.trim();
+      if (selectedType === "zip") {
+        if (notes) state.zipNotes[selected] = notes;
+        else delete state.zipNotes[selected];
+      } else {
+        if (notes) state.cityNotes[selected] = notes;
+        else delete state.cityNotes[selected];
+      }
+      redrawAllLayers();
+    });
+
+    document.getElementById("clearMenuNotesBtn").addEventListener("click", () => {
+      if (!selected) return;
+      if (selectedType === "zip") delete state.zipNotes[selected];
+      else delete state.cityNotes[selected];
       redrawAllLayers();
     });
     document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
