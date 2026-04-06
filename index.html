@@ -9,210 +9,118 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <style>
-html,body{
-margin:0;
-height:100%;
-font-family:-apple-system,BlinkMacSystemFont;
-background:#000;
-}
-
-#map{
-position:absolute;
-top:70px;
-bottom:0;
-left:0;
-right:0;
-}
-
-.topbar{
-position:absolute;
-top:0;
-left:0;
-right:0;
-height:70px;
-background:#9cff00;
-display:flex;
-align-items:center;
-padding:0 16px;
-font-weight:700;
-z-index:999;
-}
-
-.topbar .title{
-flex:1;
-font-size:20px;
-}
-
-button{
-border:none;
-padding:10px 14px;
-border-radius:10px;
-background:black;
-color:#9cff00;
-font-weight:700;
-}
-
-.popup-btn{
-width:100%;
-margin-top:6px;
-background:#9cff00;
-color:black;
-}
-
-.popup-secondary{
-background:#e5f4c5;
-color:black;
-}
-
-.popup-danger{
-background:#ff5c5c;
-color:white;
-}
+html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont;}
+#map{position:absolute;top:70px;bottom:0;left:0;right:0;}
+.top{position:absolute;top:0;left:0;right:0;height:70px;background:#9cff00;
+display:flex;align-items:center;padding:0 16px;font-weight:700;z-index:999;}
+.btn{background:black;color:#9cff00;border:none;padding:10px 14px;border-radius:10px;}
+.popup button{width:100%;margin-top:6px}
 </style>
 </head>
 <body>
 
-<div class="topbar">
-<div class="title">Territory Manager</div>
-<button onclick="openTeams()">Teams</button>
+<div class="top">
+<div style="flex:1">Territory Manager</div>
+<button class="btn">Teams</button>
 </div>
 
 <div id="map"></div>
 
 <script>
-
-const map = L.map('map').setView([38.6,-121.3],8);
+const map=L.map('map').setView([38.6,-121.3],8);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
 maxZoom:19
 }).addTo(map);
 
-const state={
-areas:{},
-teams:{
+const state={areas:{},teams:{
 team1:"#2563eb",
 team2:"#9333ea",
 team3:"#ec4899",
 team4:"#0f766e"
-},
-threshold:90
-};
+},threshold:90};
 
-function mix(c1,c2,t){
-const a=parseInt(c1.slice(1),16);
-const b=parseInt(c2.slice(1),16);
-
-const r1=(a>>16)&255;
-const g1=(a>>8)&255;
-const b1=a&255;
-
-const r2=(b>>16)&255;
-const g2=(b>>8)&255;
-const b2=b&255;
-
+function mix(a,b,t){
+const A=parseInt(a.slice(1),16);
+const B=parseInt(b.slice(1),16);
+const r1=(A>>16)&255,g1=(A>>8)&255,b1=A&255;
+const r2=(B>>16)&255,g2=(B>>8)&255,b2=B&255;
 const r=Math.round(r1+(r2-r1)*t);
 const g=Math.round(g1+(g2-g1)*t);
-const b3=Math.round(b1+(b2-b1)*t);
-
-return "#" + ((1<<24)+(r<<16)+(g<<8)+b3).toString(16).slice(1);
+const bb=Math.round(b1+(b2-b1)*t);
+return "#"+((1<<24)+(r<<16)+(g<<8)+bb).toString(16).slice(1);
 }
 
-function getColor(id){
+function color(id){
 const a=state.areas[id];
-if(!a || !a.date) return "transparent";
-
+if(!a||!a.date) return "transparent";
 const days=(Date.now()-new Date(a.date))/86400000;
 const t=Math.min(days/state.threshold,1);
-
-const start=state.teams[a.owner||"team1"];
-const end=state.teams[a.handoff||"team2"];
-
-return mix(start,end,t);
+return mix(state.teams[a.owner||"team1"],state.teams[a.handoff||"team2"],t);
 }
 
-function popupHtml(id){
+function popup(id){
 const a=state.areas[id]||{};
-
 return `
+<div class="popup">
 <b>Area ${id}</b><br>
 Last visited: ${a.date||"Not set"}
 
-<button class="popup-btn" onclick="markToday('${id}')">Mark Today</button>
+<button onclick="today('${id}')">Mark Today</button>
 
-<select id="owner-${id}">
-<option value="team1">Team 1</option>
-<option value="team2">Team 2</option>
-<option value="team3">Team 3</option>
-<option value="team4">Team 4</option>
+<label>Owner Team</label>
+<select id="o${id}">
+<option>team1</option>
+<option>team2</option>
+<option>team3</option>
+<option>team4</option>
 </select>
 
-<select id="handoff-${id}">
-<option value="team1">Team 1</option>
-<option value="team2">Team 2</option>
-<option value="team3">Team 3</option>
-<option value="team4">Team 4</option>
+<label>Handoff Team</label>
+<select id="h${id}">
+<option>team1</option>
+<option>team2</option>
+<option>team3</option>
+<option>team4</option>
 </select>
 
-<button class="popup-secondary" onclick="saveTeams('${id}')">
-Apply Teams Gradient
-</button>
-
-<button class="popup-danger" onclick="clearDate('${id}')">
-Clear
-</button>
-`;
+<button onclick="save('${id}')">Apply Teams Gradient</button>
+<button onclick="clearArea('${id}')">Clear</button>
+</div>`;
 }
 
-function markToday(id){
+function today(id){
 state.areas[id]=state.areas[id]||{};
 state.areas[id].date=new Date().toISOString().slice(0,10);
 refresh();
 }
 
-function saveTeams(id){
+function save(id){
 state.areas[id]=state.areas[id]||{};
-state.areas[id].owner=document.getElementById("owner-"+id).value;
-state.areas[id].handoff=document.getElementById("handoff-"+id).value;
+state.areas[id].owner=document.getElementById("o"+id).value;
+state.areas[id].handoff=document.getElementById("h"+id).value;
 refresh();
 }
 
-function clearDate(id){
-delete state.areas[id];
-refresh();
-}
+function clearArea(id){delete state.areas[id];refresh();}
 
-const areas=[];
+const polys=[];
 
-for(let i=0;i<20;i++){
-const lat=38.5+(Math.random()*1.5);
-const lng=-121.7+(Math.random()*1.5);
-
-const poly=L.circle([lat,lng],{
-radius:20000,
-color:"#000",
-weight:1,
-fillOpacity:.7
+for(let i=0;i<15;i++){
+const p=L.circle([38+Math.random()*2,-122+Math.random()*2],{
+radius:15000,color:"#000",weight:1,fillOpacity:.7
 }).addTo(map);
 
-poly.id=i;
-
-poly.on("click",()=>{
-poly.bindPopup(popupHtml(i)).openPopup();
-});
-
-areas.push(poly);
+p.id=i;
+p.on("click",()=>p.bindPopup(popup(i)).openPopup());
+polys.push(p);
 }
 
 function refresh(){
-areas.forEach(p=>{
-p.setStyle({
-fillColor:getColor(p.id)
-});
-});
+polys.forEach(p=>p.setStyle({fillColor:color(p.id)}));
 }
-
 refresh();
-
 </script>
+
 </body>
 </html>
