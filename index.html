@@ -166,7 +166,20 @@
       <h1>Teams</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Choose each team color here. Set Owner Team and Handoff Team inside each area popup.</div>
+      <div class="small">Choose each team name and color here. Set Owner Team and Handoff Team inside each area popup.</div>
+
+      <div class="section">
+        <div class="section-title">Team names</div>
+        <label for="team1Name">Team 1 name</label>
+        <input id="team1Name" type="text" placeholder="Team 1">
+        <label for="team2Name">Team 2 name</label>
+        <input id="team2Name" type="text" placeholder="Team 2">
+        <label for="team3Name">Team 3 name</label>
+        <input id="team3Name" type="text" placeholder="Team 3">
+        <label for="team4Name">Team 4 name</label>
+        <input id="team4Name" type="text" placeholder="Team 4">
+        <button id="saveTeamNamesBtn" class="secondary">Save team names</button>
+      </div>
 
       <div class="section">
         <div class="section-title">Team colors</div>
@@ -180,28 +193,6 @@
         <input id="team4Color" type="color">
         <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
       </div>
-
-      <div class="section">
-        <div class="section-title">Territory handoff gradient</div>
-        <label for="gradientStartTeam">Team currently running territory</label>
-        <select id="gradientStartTeam">
-          <option value="team1">Team 1</option>
-          <option value="team2">Team 2</option>
-          <option value="team3">Team 3</option>
-          <option value="team4">Team 4</option>
-        </select>
-
-        <label for="gradientEndTeam">Team receiving territory next</label>
-        <select id="gradientEndTeam">
-          <option value="team1">Team 1</option>
-          <option value="team2">Team 2</option>
-          <option value="team3">Team 3</option>
-          <option value="team4">Team 4</option>
-        </select>
-        <button id="saveGradientTeamsBtn" class="secondary">Save handoff gradient</button>
-      </div>
-    </div>
-  </div>
 
   <div id="panel" class="panel">
     <div class="panel-header">
@@ -225,6 +216,7 @@
         <select id="timeMode">
           <option value="weeks">Weeks</option>
           <option value="days">Days</option>
+          <option value="months">Months</option>
         </select>
 
         <label for="thresholdValue">Turn ready again after</label>
@@ -316,6 +308,12 @@
             team3: "#ec4899",
             team4: "#0f766e"
           },
+          teamNames: {
+            team1: "Team 1",
+            team2: "Team 2",
+            team3: "Team 3",
+            team4: "Team 4"
+          },
           teamGradient: {
             startTeam: "team1",
             endTeam: "team4"
@@ -341,6 +339,12 @@
         team3: "#ec4899",
         team4: "#0f766e"
       };
+      state.settings.teamNames = state.settings.teamNames || {
+        team1: "Team 1",
+        team2: "Team 2",
+        team3: "Team 3",
+        team4: "Team 4"
+      };
       state.settings.teamGradient = state.settings.teamGradient || {
         startTeam: "team1",
         endTeam: "team4"
@@ -363,13 +367,20 @@
     }
 
     function getMode() {
-      return state.settings.timeMode === "days" ? "days" : "weeks";
+      if (state.settings.timeMode === "days") return "days";
+      if (state.settings.timeMode === "months") return "months";
+      return "weeks";
     }
 
     function getThreshold() {
       const raw = Number(state.settings.thresholdValue);
-      if (!Number.isFinite(raw)) return getMode() === "days" ? 30 : 12;
-      const max = getMode() === "days" ? 365 : 52;
+      const mode = getMode();
+      if (!Number.isFinite(raw)) {
+        if (mode === "days") return 30;
+        if (mode === "months") return 3;
+        return 12;
+      }
+      const max = mode === "days" ? 365 : mode === "months" ? 24 : 52;
       return Math.max(1, Math.min(max, raw));
     }
 
@@ -377,7 +388,10 @@
       if (!dateStr) return null;
       const then = new Date(dateStr + "T00:00:00");
       const diffDays = Math.max(0, (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24));
-      return getMode() === "days" ? diffDays : (diffDays / 7);
+      const mode = getMode();
+      if (mode === "days") return diffDays;
+      if (mode === "months") return diffDays / 30.4375;
+      return diffDays / 7;
     }
 
     function getTeamColors() {
@@ -387,6 +401,19 @@
         team3: "#ec4899",
         team4: "#0f766e"
       };
+    }
+
+    function getTeamNames() {
+      return state.settings.teamNames || {
+        team1: "Team 1",
+        team2: "Team 2",
+        team3: "Team 3",
+        team4: "Team 4"
+      };
+    }
+
+    function teamDisplayName(teamKey) {
+      return getTeamNames()[teamKey] || String(teamKey || "");
     }
 
     function hexToRgb(hex) {
@@ -430,8 +457,8 @@
     function gradientLabel(type, key) {
       const perArea = getAreaGradient(type, key);
       const grad = perArea || state.settings.teamGradient || {};
-      const start = (grad.startTeam || "team1").replace("team", "Team ");
-      const end = (grad.endTeam || "team4").replace("team", "Team ");
+      const start = teamDisplayName(grad.startTeam || "team1");
+      const end = teamDisplayName(grad.endTeam || "team4");
       return start + " → " + end;
     }
 
@@ -542,7 +569,7 @@
     function updateThresholdInput() {
       const mode = getMode();
       const input = document.getElementById("thresholdValue");
-      input.max = mode === "days" ? "365" : "52";
+      input.max = mode === "days" ? "365" : mode === "months" ? "24" : "52";
       input.value = getThreshold();
     }
 
@@ -704,18 +731,18 @@
           <label style="display:block;margin-top:8px;font-weight:700;">Owner Team</label>
           <select id="popupOwnerTeam">
             <option value="" ${currentTeam === "" ? "selected" : ""}>None</option>
-            <option value="team1" ${currentTeam === "team1" ? "selected" : ""}>Team 1</option>
-            <option value="team2" ${currentTeam === "team2" ? "selected" : ""}>Team 2</option>
-            <option value="team3" ${currentTeam === "team3" ? "selected" : ""}>Team 3</option>
-            <option value="team4" ${currentTeam === "team4" ? "selected" : ""}>Team 4</option>
+            <option value="team1" ${currentTeam === "team1" ? "selected" : ""}>${teamDisplayName("team1")}</option>
+            <option value="team2" ${currentTeam === "team2" ? "selected" : ""}>${teamDisplayName("team2")}</option>
+            <option value="team3" ${currentTeam === "team3" ? "selected" : ""}>${teamDisplayName("team3")}</option>
+            <option value="team4" ${currentTeam === "team4" ? "selected" : ""}>${teamDisplayName("team4")}</option>
           </select>
 
           <label style="display:block;margin-top:8px;font-weight:700;">Handoff Team</label>
           <select id="popupHandoffTeam">
-            <option value="team1" ${currentGrad.endTeam === "team1" ? "selected" : ""}>Team 1</option>
-            <option value="team2" ${currentGrad.endTeam === "team2" ? "selected" : ""}>Team 2</option>
-            <option value="team3" ${currentGrad.endTeam === "team3" ? "selected" : ""}>Team 3</option>
-            <option value="team4" ${currentGrad.endTeam === "team4" ? "selected" : ""}>Team 4</option>
+            <option value="team1" ${currentGrad.endTeam === "team1" ? "selected" : ""}>${teamDisplayName("team1")}</option>
+            <option value="team2" ${currentGrad.endTeam === "team2" ? "selected" : ""}>${teamDisplayName("team2")}</option>
+            <option value="team3" ${currentGrad.endTeam === "team3" ? "selected" : ""}>${teamDisplayName("team3")}</option>
+            <option value="team4" ${currentGrad.endTeam === "team4" ? "selected" : ""}>${teamDisplayName("team4")}</option>
           </select>
           <button class="secondary" onclick="popupSaveTeamsGradient()">Apply Teams Gradient</button>
 
@@ -866,6 +893,16 @@
     });
     document.getElementById("showZipLabels").addEventListener("change", (e) => {
       state.settings.showZipLabels = e.target.value === "on";
+      redrawAllLayers();
+    });
+
+    document.getElementById("saveTeamNamesBtn").addEventListener("click", () => {
+      state.settings.teamNames = {
+        team1: document.getElementById("team1Name").value.trim() || "Team 1",
+        team2: document.getElementById("team2Name").value.trim() || "Team 2",
+        team3: document.getElementById("team3Name").value.trim() || "Team 3",
+        team4: document.getElementById("team4Name").value.trim() || "Team 4"
+      };
       redrawAllLayers();
     });
     document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
