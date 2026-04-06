@@ -1,7 +1,7 @@
 {
   "name": "Territory Manager",
   "short_name": "TM",
-  "start_url": "./",
+  "start_url": "./?v=live",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#9DE600",
