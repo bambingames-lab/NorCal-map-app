@@ -1,277 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Territory Manager</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <meta name="theme-color" content="#9DE600"/>
-  <style>
-    :root{
-      --bg:#000000;
-      --panel:#ffffff;
-      --panel-border:#cde7a5;
-      --text:#000000;
-      --muted:#222222;
-      --primary:#9DE600;
-      --primary-dark:#86c700;
-      --secondary:#eff8d1;
-      --danger:#ff5f6d;
-      --shadow:0 10px 26px rgba(0,0,0,0.18);
-    }
 
-    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; background:var(--bg); color:var(--text); }
-    #map { height:100vh; width:100vw; background:#000000; }
-
-    .topbar{
-      position:absolute; left:0; right:0; top:0; z-index:1300;
-      display:grid; grid-template-columns: 1fr 120px 96px; align-items:center; gap:12px;
-      background:rgba(157,230,0,.98);
-      border-bottom:1px solid rgba(0,0,0,.18);
-      box-shadow:var(--shadow);
-      padding:14px 16px;
-    }
-
-    .topbar-title{
-      font-weight:800;
-      color:#000;
-      letter-spacing:.2px;
-      font-size:20px;
-      line-height:1;
-    }
-
-    .teamLaunchBtn, .menuBtn {
-      border:none; border-radius:10px;
-      background:#000;
-      font-weight:700; cursor:pointer; color:var(--primary);
-      border:1px solid rgba(157,230,0,.55);
-      margin:0;
-      font-size:16px;
-      height:48px;
-    }
-
-    .teamLaunchBtn{ width:120px; justify-self:center; }
-    .menuBtn{ width:96px; justify-self:end; }
-    .menuBtn.hidden, .teamLaunchBtn.hidden { display:none; }
-
-    .panel {
-      position:absolute; top:66px; right:12px; z-index:1290;
-      width:310px; max-width:calc(100vw - 24px);
-      background:rgba(255,255,255,.985); border-radius:18px;
-      box-shadow:var(--shadow); border:1px solid var(--panel-border);
-      display:none; max-height:calc(100vh - 78px); overflow-y:auto;
-    }
-    .panel.open { display:block; }
-    .team-panel{ left:12px; right:auto; }
-
-    .panel-header {
-      position:sticky; top:0; z-index:2;
-      display:flex; align-items:center; justify-content:space-between; gap:8px;
-      background:rgba(255,255,255,.98);
-      padding:14px 14px 12px;
-      border-bottom:1px solid #edf4ee;
-      border-top-left-radius:18px; border-top-right-radius:18px;
-    }
-
-    .closeBtn {
-      width:auto; min-width:68px; padding:8px 12px; margin:0;
-      background:linear-gradient(180deg, var(--primary), var(--primary-dark));
-      color:#000; border:none; border-radius:12px;
-      font-size:12px; font-weight:700; cursor:pointer;
-    }
-
-    .panel h1 { font-size:20px; margin:0; line-height:1.2; color:#000; }
-    .small { font-size:12px; color:#222; line-height:1.45; margin-bottom:10px; }
-    .section { border:1px solid #e7f1e8; border-radius:14px; padding:12px; margin-top:12px; background:#fff; }
-    .section-title { font-size:14px; font-weight:700; margin-bottom:8px; color:#000; }
-    label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; color:#000; }
-
-    input, select, button {
-      width:100%; box-sizing:border-box; border-radius:12px; font-size:14px;
-    }
-    input, select {
-      border:1px solid #cde7a5; padding:11px 12px; background:#fff; color:#000;
-      outline:none;
-    }
-    input[type="color"]{
-      width:100%; height:44px; padding:4px; border-radius:12px;
-      border:1px solid #cde7a5; background:#fff;
-    }
-    input:focus, select:focus {
-      border-color:var(--primary);
-      box-shadow:0 0 0 3px rgba(157,230,0,.22);
-    }
-    button {
-      border:none; padding:11px 12px; background:linear-gradient(180deg, var(--primary), var(--primary-dark)); color:#000;
-      font-weight:700; margin-top:8px; cursor:pointer;
-    }
-    button.secondary { background:var(--secondary); color:#000; }
-    button.danger { background:linear-gradient(180deg, #ea7a7a, var(--danger)); color:#fff; }
-
-    .row { display:grid; grid-template-columns: 1fr auto; gap:8px; }
-    .row button { width:auto; min-width:72px; margin-top:0; }
-
-    .legend {
-      display:grid; grid-template-columns:repeat(5, 1fr); height:14px; overflow:hidden;
-      border-radius:999px; border:1px solid #dbe9dd; margin-top:8px;
-    }
-    .legend-labels {
-      display:flex; justify-content:space-between; font-size:11px; color:#222; margin-top:5px;
-    }
-
-    .stats {
-      font-size:13px; line-height:1.5; background:#f5ffd8;
-      border:1px solid #dbeedc; border-radius:12px; padding:11px; color:#000;
-    }
-
-    .leaflet-top.leaflet-left{ top:72px; }
-    .leaflet-control-zoom{
-      border-radius:12px !important;
-      overflow:hidden;
-      box-shadow:var(--shadow);
-      border:1px solid rgba(0,0,0,.14);
-    }
-    .leaflet-control-zoom a{ color:#000 !important; }
-
-    .zip-code-label {
-      background: rgba(255,255,255,0.92);
-      border: 1px solid #d5e7d8;
-      border-radius: 6px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.10);
-      color: #000;
-      font-size: 9px;
-      font-weight: 700;
-      padding: 1px 4px;
-    }
-
-    @media (max-width: 640px){
-      .panel{ width:calc(100vw - 24px); }
-      .topbar{ grid-template-columns: 1fr 92px 88px; gap:8px; padding:12px; }
-      .topbar-title{ font-size:18px; }
-      .teamLaunchBtn{ width:92px; height:44px; font-size:15px; }
-      .menuBtn{ width:88px; height:44px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <div class="topbar-title">Territory Manager</div>
-    <button id="teamMenuBtn" class="teamLaunchBtn">Teams</button>
-    <button id="menuBtn" class="menuBtn">Menu</button>
-  </div>
-
-  <div id="teamPanel" class="panel team-panel">
-    <div class="panel-header">
-      <button id="closeTeamBtn" class="closeBtn">Close</button>
-      <h1>Teams</h1>
-    </div>
-    <div style="padding:12px;">
-      <div class="small">Choose each team name and color here. Set Owner Team and Handoff Team inside each area popup.</div>
-
-      <div class="section">
-        <div class="section-title">Team names</div>
-        <label for="team1Name">Team 1 name</label>
-        <input id="team1Name" type="text" placeholder="Team 1">
-        <label for="team2Name">Team 2 name</label>
-        <input id="team2Name" type="text" placeholder="Team 2">
-        <label for="team3Name">Team 3 name</label>
-        <input id="team3Name" type="text" placeholder="Team 3">
-        <label for="team4Name">Team 4 name</label>
-        <input id="team4Name" type="text" placeholder="Team 4">
-        <button id="saveTeamNamesBtn" class="secondary">Save team names</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Team colors</div>
-        <label for="team1Color">Team 1 color</label>
-        <input id="team1Color" type="color">
-        <label for="team2Color">Team 2 color</label>
-        <input id="team2Color" type="color">
-        <label for="team3Color">Team 3 color</label>
-        <input id="team3Color" type="color">
-        <label for="team4Color">Team 4 color</label>
-        <input id="team4Color" type="color">
-        <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
-      </div>
-    </div>
-  </div>
-
-  <div id="panel" class="panel">
-    <div class="panel-header">
-      <button id="closeBtn" class="closeBtn">Close</button>
-      <h1>Territory Manager</h1>
-    </div>
-    <div style="padding:12px;">
-      <div class="small">Track ZIPs and cities, search faster, and manage overdue territories with a polished layout.</div>
-
-      <div class="section">
-        <div class="section-title">Search ZIP / City</div>
-        <div class="row">
-          <input id="searchInput" placeholder="Try 95823 or Auburn">
-          <button id="searchBtn">Find</button>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Overdue timing</div>
-        <label for="timeMode">Use days, weeks, or months</label>
-        <select id="timeMode">
-          <option value="weeks">Weeks</option>
-          <option value="days">Days</option>
-          <option value="months">Months</option>
-        </select>
-
-        <label for="thresholdValue">Turn ready again after</label>
-        <input id="thresholdValue" type="number" min="1" max="365" step="1">
-      </div>
-
-      <div class="section">
-        <div class="section-title">ZIP appearance</div>
-        <label for="zipFill">Unchecked ZIP fill</label>
-        <select id="zipFill">
-          <option value="none">Transparent</option>
-          <option value="gray">Light gray</option>
-        </select>
-        <label for="zipWeight">ZIP line thickness</label>
-        <input id="zipWeight" type="range" min="2" max="6" step="0.5">
-        <label for="showZipLabels">ZIP code labels</label>
-        <select id="showZipLabels">
-          <option value="off">Off</option>
-          <option value="on">On</option>
-        </select>
-        <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Quick actions</div>
-        <button id="markTodayBtn">Mark selected area today</button>
-        <input id="date" type="date">
-        <button id="setDateBtn" class="secondary">Set selected area date</button>
-        <button id="clearDateBtn" class="danger">Clear selected area date</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Legend</div>
-        <div class="legend">
-          <div id="legend1"></div><div id="legend2"></div><div id="legend3"></div><div id="legend4"></div><div id="legend5"></div>
-        </div>
-        <div class="legend-labels">
-          <span>Recent</span>
-          <span id="legendTarget">~ 12 weeks</span>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Coverage</div>
-        <div id="stats" class="stats">Loading…</div>
-      </div>
-    </div>
-  </div>
-
-  <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
     // Clear any old service workers and caches so stale UI stops appearing.
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(reg => reg.unregister()));
@@ -880,7 +607,10 @@
     document.getElementById("team1Color").value = (state.settings.teamColors || {}).team1 || "#2563eb";
     document.getElementById("team2Color").value = (state.settings.teamColors || {}).team2 || "#9333ea";
     document.getElementById("team3Color").value = (state.settings.teamColors || {}).team3 || "#ec4899";
-    document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";    updateThresholdInput();
+    document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";
+    document.getElementById("gradientStartTeam").value = (state.settings.teamGradient || {}).startTeam || "team1";
+    document.getElementById("gradientEndTeam").value = (state.settings.teamGradient || {}).endTeam || "team4";
+    updateThresholdInput();
 
     document.getElementById("zipFill").addEventListener("change", (e) => {
       state.settings.zipFill = e.target.value;
@@ -913,19 +643,22 @@
       };
       redrawAllLayers();
     });
+    document.getElementById("saveGradientTeamsBtn").addEventListener("click", () => {
+      state.settings.teamGradient = {
+        startTeam: document.getElementById("gradientStartTeam").value,
+        endTeam: document.getElementById("gradientEndTeam").value
+      };
+      redrawAllLayers();
+    });
 
     document.getElementById("timeMode").addEventListener("change", (e) => {
-      if (e.target.value === "days") state.settings.timeMode = "days";
-      else if (e.target.value === "months") state.settings.timeMode = "months";
-      else state.settings.timeMode = "weeks";
+      state.settings.timeMode = e.target.value === "days" ? "days" : "weeks";
       redrawAllLayers();
     });
     document.getElementById("thresholdValue").addEventListener("change", (e) => {
       const val = Number(e.target.value);
-      const mode = getMode();
-      const max = mode === "days" ? 365 : mode === "months" ? 24 : 52;
-      const fallback = mode === "days" ? 30 : mode === "months" ? 3 : 12;
-      state.settings.thresholdValue = Number.isFinite(val) ? Math.max(1, Math.min(max, val)) : fallback;
+      const max = getMode() === "days" ? 365 : 52;
+      state.settings.thresholdValue = Number.isFinite(val) ? Math.max(1, Math.min(max, val)) : (getMode() === "days" ? 30 : 12);
       redrawAllLayers();
     });
     document.getElementById("refreshZipBtn").addEventListener("click", () => loadZipLayer(true));
@@ -1008,6 +741,4 @@
     updateStats();
     loadZipLayer(false);
     loadCityLayer(false);
-  </script>
-</body>
-</html>
+  
