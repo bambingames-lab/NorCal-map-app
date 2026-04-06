@@ -163,10 +163,10 @@
   <div id="teamPanel" class="panel team-panel">
     <div class="panel-header">
       <button id="closeTeamBtn" class="closeBtn">Close</button>
-      <h1>Teams</h1>
+      <h1>Team colors</h1>
     </div>
     <div style="padding:12px;">
-      <div class="small">Choose team colors, assign the selected area, and control the follow-up gradient from one team color to another.</div>
+      <div class="small">Use this panel to choose each team's color.</div>
 
       <div class="section">
         <div class="section-title">Team colors</div>
@@ -179,39 +179,6 @@
         <label for="team4Color">Team 4 color</label>
         <input id="team4Color" type="color">
         <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Gradient by teams</div>
-        <label for="gradientStartTeam">Recent side team</label>
-        <select id="gradientStartTeam">
-          <option value="team1">Team 1</option>
-          <option value="team2">Team 2</option>
-          <option value="team3">Team 3</option>
-          <option value="team4">Team 4</option>
-        </select>
-        <label for="gradientEndTeam">Ready again side team</label>
-        <select id="gradientEndTeam">
-          <option value="team1">Team 1</option>
-          <option value="team2">Team 2</option>
-          <option value="team3">Team 3</option>
-          <option value="team4">Team 4</option>
-        </select>
-        <button id="saveGradientTeamsBtn" class="secondary">Save gradient teams</button>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Assign selected area</div>
-        <label for="teamSelectTop">Selected area team</label>
-        <select id="teamSelectTop">
-          <option value="">None</option>
-          <option value="team1">Team 1</option>
-          <option value="team2">Team 2</option>
-          <option value="team3">Team 3</option>
-          <option value="team4">Team 4</option>
-        </select>
-        <button id="applyTeamBtnTop" class="secondary">Apply team to selected area</button>
-        <button id="clearTeamBtnTop" class="secondary">Clear team from selected area</button>
       </div>
     </div>
   </div>
@@ -259,6 +226,37 @@
           <option value="on">On</option>
         </select>
         <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
+      </div>
+      <div class="section">
+        <div class="section-title">Teams quick menu</div>
+        <label for="teamSelectTop">Assign selected area to team</label>
+        <select id="teamSelectTop">
+          <option value="">None</option>
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+        <button id="applyTeamBtnTop" class="secondary">Apply team to selected area</button>
+        <button id="clearTeamBtnTop" class="secondary">Clear team from selected area</button>
+
+        <label for="gradientStartTeam">Team currently running territory</label>
+        <select id="gradientStartTeam">
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+
+        <label for="gradientEndTeam">Team receiving territory next</label>
+        <select id="gradientEndTeam">
+          <option value="team1">Team 1</option>
+          <option value="team2">Team 2</option>
+          <option value="team3">Team 3</option>
+          <option value="team4">Team 4</option>
+        </select>
+        <button id="saveGradientTeamsBtn" class="secondary">Save territory handoff gradient</button>
+        <div class="small">The wait-time gradient fades from the running team color to the receiving team color.</div>
       </div>
 
       <div class="section">
@@ -569,6 +567,16 @@
         }
       }
 
+      if (document.getElementById("teamSelectTop")) {
+        if (selected) {
+          document.getElementById("teamSelectTop").value = selectedType === "zip"
+            ? (state.zipTeams[selected] || "")
+            : (state.cityTeams[selected] || "");
+        } else {
+          document.getElementById("teamSelectTop").value = "";
+        }
+      }
+
       document.getElementById("stats").innerHTML =
         selectedText +
         "<br><br><strong>ZIPs tracked:</strong> " + trackedZips +
@@ -757,6 +765,7 @@
     document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";
     document.getElementById("gradientStartTeam").value = (state.settings.teamGradient || {}).startTeam || "team1";
     document.getElementById("gradientEndTeam").value = (state.settings.teamGradient || {}).endTeam || "team4";
+    document.getElementById("teamSelectTop").value = "";
     updateThresholdInput();
 
     document.getElementById("zipFill").addEventListener("change", (e) => {
