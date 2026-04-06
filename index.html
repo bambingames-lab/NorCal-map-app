@@ -258,6 +258,7 @@
 
       <div class="section">
         <div class="section-title">Legend</div>
+        <div id="legendGradientLabel" class="small" style="margin-bottom:6px;">Gradient: Team 1 → Team 4</div>
         <div class="legend">
           <div id="legend1"></div><div id="legend2"></div><div id="legend3"></div><div id="legend4"></div><div id="legend5"></div>
         </div>
@@ -324,7 +325,9 @@
         zips: {},
         cities: {},
         zipTeams: {},
-        cityTeams: {}
+        cityTeams: {},
+        zipGradientTeams: {},
+        cityGradientTeams: {}
       };
     } else {
       state.settings = state.settings || {};
@@ -347,6 +350,8 @@
       state.cities = state.cities || {};
       state.zipTeams = state.zipTeams || {};
       state.cityTeams = state.cityTeams || {};
+      state.zipGradientTeams = state.zipGradientTeams || {};
+      state.cityGradientTeams = state.cityGradientTeams || {};
     }
 
     let zipLayer = null;
@@ -407,23 +412,34 @@
       );
     }
 
-    function gradientEndpoints() {
+    function getAreaGradient(type, key) {
+      if (!key) return null;
+      if (type === "zip") return (state.zipGradientTeams || {})[key] || null;
+      return (state.cityGradientTeams || {})[key] || null;
+    }
+
+    function gradientEndpoints(type, key) {
       const colors = getTeamColors();
-      const grad = state.settings.teamGradient || {};
+      const grad = getAreaGradient(type, key) || state.settings.teamGradient || {};
       return {
         start: colors[grad.startTeam || "team1"] || "#2563eb",
         end: colors[grad.endTeam || "team4"] || "#0f766e"
       };
     }
 
-    function zoneColor(dateStr) {
+    function gradientLabel(type, key) {
+      const grad = getAreaGradient(type, key) || state.settings.teamGradient || {};
+      return (grad.startTeam || "team1").replace("team", "Team ") + " → " + (grad.endTeam || "team4").replace("team", "Team ");
+    }
+
+    function zoneColor(dateStr, type, key) {
       if (!dateStr) {
         return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
       }
       const elapsed = elapsedUnits(dateStr);
       const target = getThreshold();
       const pct = Math.max(0, Math.min(1, elapsed / target));
-      const endpoints = gradientEndpoints();
+      const endpoints = gradientEndpoints(type, key);
       return mixColors(endpoints.start, endpoints.end, pct);
     }
 
@@ -469,7 +485,7 @@
         color: teamBorderColor("zip", zip, isSelected ? "#2563eb" : "#111827"),
         weight: isSelected ? baseWeight + 1.1 : baseWeight,
         opacity: 0.92,
-        fillColor: zoneColor(last),
+        fillColor: zoneColor(last, "city", city),
         fillOpacity: last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0)
       };
     }
@@ -518,6 +534,8 @@
       document.getElementById("legend3").style.background = mixColors(endpoints.start, endpoints.end, 0.5);
       document.getElementById("legend4").style.background = mixColors(endpoints.start, endpoints.end, 0.75);
       document.getElementById("legend5").style.background = mixColors(endpoints.start, endpoints.end, 1.0);
+      const label = document.getElementById("legendGradientLabel");
+      if (label) label.textContent = "Default gradient: " + gradientLabel();
     }
 
     function updateThresholdInput() {
@@ -537,12 +555,14 @@
           selectedText =
             "<strong>Selected ZIP:</strong> " + selected +
             "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set") +
-            "<br><strong>Team:</strong> " + (getAreaTeam("zip", selected) || "None");
+            "<br><strong>Team:</strong> " + (getAreaTeam("zip", selected) || "None") +
+            "<br><strong>Gradient:</strong> " + gradientLabel("zip", selected);
         } else {
           selectedText =
             "<strong>Selected city:</strong> " + selected +
             "<br><strong>Last visited:</strong> " + (state.cities[selected] || "Not set") +
-            "<br><strong>Team:</strong> " + (getAreaTeam("city", selected) || "None");
+            "<br><strong>Team:</strong> " + (getAreaTeam("city", selected) || "None") +
+            "<br><strong>Gradient:</strong> " + gradientLabel("city", selected);
         }
       }
 
@@ -612,6 +632,24 @@
       map.closePopup();
     };
 
+    window.popupSaveGradient = function () {
+      if (!selected) return;
+      const startEl = document.getElementById("popupGradientStart");
+      const endEl = document.getElementById("popupGradientEnd");
+      const value = {
+        startTeam: startEl ? startEl.value : "team1",
+        endTeam: endEl ? endEl.value : "team4"
+      };
+      if (selectedType === "zip") {
+        state.zipGradientTeams[selected] = value;
+      }
+      if (selectedType === "city") {
+        state.cityGradientTeams[selected] = value;
+      }
+      redrawAllLayers();
+      map.closePopup();
+    };
+
     window.popupClearDate = function () {
       if (!selected) return;
       if (selectedType === "zip") delete state.zips[selected];
@@ -656,6 +694,7 @@
 
     function popupHtml(label, last, type, key) {
       const currentTeam = getAreaTeam(type, key) || "";
+      const currentGrad = getAreaGradient(type, key) || state.settings.teamGradient || { startTeam: "team1", endTeam: "team4" };
       return `
         <div style="min-width:210px">
           <strong>${label}</strong><br>
@@ -674,6 +713,23 @@
             <option value="team4" ${currentTeam === "team4" ? "selected" : ""}>Team 4</option>
           </select>
           <button class="secondary" onclick="popupSaveTeam()">Save Team</button>
+
+          <label style="display:block;margin-top:8px;font-weight:700;">Gradient from team</label>
+          <select id="popupGradientStart">
+            <option value="team1" ${currentGrad.startTeam === "team1" ? "selected" : ""}>Team 1</option>
+            <option value="team2" ${currentGrad.startTeam === "team2" ? "selected" : ""}>Team 2</option>
+            <option value="team3" ${currentGrad.startTeam === "team3" ? "selected" : ""}>Team 3</option>
+            <option value="team4" ${currentGrad.startTeam === "team4" ? "selected" : ""}>Team 4</option>
+          </select>
+
+          <label style="display:block;margin-top:8px;font-weight:700;">Gradient to team</label>
+          <select id="popupGradientEnd">
+            <option value="team1" ${currentGrad.endTeam === "team1" ? "selected" : ""}>Team 1</option>
+            <option value="team2" ${currentGrad.endTeam === "team2" ? "selected" : ""}>Team 2</option>
+            <option value="team3" ${currentGrad.endTeam === "team3" ? "selected" : ""}>Team 3</option>
+            <option value="team4" ${currentGrad.endTeam === "team4" ? "selected" : ""}>Team 4</option>
+          </select>
+          <button class="secondary" onclick="popupSaveGradient()">Save Gradient</button>
 
           <button class="danger" onclick="popupClearDate()">Clear Date</button>
         </div>
