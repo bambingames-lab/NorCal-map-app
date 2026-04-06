@@ -1,34 +1,1159 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Territory Manager</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <meta name="theme-color" content="#9DE600"/>
+  <style>
+    :root{
+      --bg:#000000;
+      --panel:#ffffff;
+      --panel-border:#cde7a5;
+      --text:#000000;
+      --muted:#222222;
+      --primary:#9DE600;
+      --primary-dark:#86c700;
+      --secondary:#eff8d1;
+      --danger:#ff5f6d;
+      --shadow:0 10px 26px rgba(0,0,0,0.18);
+    }
 
-<title>Territory Manager</title>
+    html, body { margin:0; padding:0; height:100%; font-family: Arial, sans-serif; background:var(--bg); color:var(--text); }
+    #map { height:100vh; width:100vw; background:#000000; }
+
+    .topbar{
+      position:absolute; left:0; right:0; top:0; z-index:1300;
+      display:grid; grid-template-columns: 1fr 120px 96px; align-items:center; gap:12px;
+      background:rgba(157,230,0,.98);
+      border-bottom:1px solid rgba(0,0,0,.18);
+      box-shadow:var(--shadow);
+      padding:14px 16px;
+    }
+
+    .topbar-title{
+      font-weight:800;
+      color:#000;
+      letter-spacing:.2px;
+      font-size:20px;
+      line-height:1;
+    }
+
+    .teamLaunchBtn, .menuBtn {
+      border:none; border-radius:10px;
+      background:#000;
+      font-weight:700; cursor:pointer; color:var(--primary);
+      border:1px solid rgba(157,230,0,.55);
+      margin:0;
+      font-size:16px;
+      height:48px;
+    }
+
+    .teamLaunchBtn{ width:120px; justify-self:center; }
+    .menuBtn{ width:96px; justify-self:end; }
+    .menuBtn.hidden, .teamLaunchBtn.hidden { display:none; }
+
+    .panel {
+      position:absolute; top:66px; right:12px; z-index:1290;
+      width:310px; max-width:calc(100vw - 24px);
+      background:rgba(255,255,255,.985); border-radius:18px;
+      box-shadow:var(--shadow); border:1px solid var(--panel-border);
+      display:none; max-height:calc(100vh - 78px); overflow-y:auto;
+    }
+    .panel.open { display:block; }
+    .team-panel{ left:12px; right:auto; }
+
+    .panel-header {
+      position:sticky; top:0; z-index:2;
+      display:flex; align-items:center; justify-content:space-between; gap:8px;
+      background:rgba(255,255,255,.98);
+      padding:14px 14px 12px;
+      border-bottom:1px solid #edf4ee;
+      border-top-left-radius:18px; border-top-right-radius:18px;
+    }
+
+    .closeBtn {
+      width:auto; min-width:68px; padding:8px 12px; margin:0;
+      background:linear-gradient(180deg, var(--primary), var(--primary-dark));
+      color:#000; border:none; border-radius:12px;
+      font-size:12px; font-weight:700; cursor:pointer;
+    }
+
+    .panel h1 { font-size:20px; margin:0; line-height:1.2; color:#000; }
+    .small { font-size:12px; color:#222; line-height:1.45; margin-bottom:10px; }
+    .section { border:1px solid #e7f1e8; border-radius:14px; margin-top:12px; background:#fff; overflow:hidden; }
+    .section-title { font-size:14px; font-weight:700; color:#000; }
+    .section-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:14px 12px;
+      cursor:pointer;
+      user-select:none;
+      background:#fff;
+    }
+    .section-chevron{
+      font-size:18px;
+      line-height:1;
+      transform:rotate(0deg);
+      transition:transform .18s ease;
+    }
+    .section.collapsed .section-chevron{
+      transform:rotate(-90deg);
+    }
+    .section-content{
+      padding:0 12px 12px;
+    }
+    .section.collapsed .section-content{
+      display:none;
+    }
+    label { display:block; font-size:12px; font-weight:700; margin:8px 0 4px; color:#000; }
+
+    input, select, button {
+      width:100%; box-sizing:border-box; border-radius:12px; font-size:14px;
+    }
+    input, select, textarea {
+      border:1px solid #cde7a5; padding:11px 12px; background:#fff; color:#000;
+      outline:none;
+    }
+
+    textarea{
+      width:100%;
+      box-sizing:border-box;
+      border-radius:12px;
+      min-height:100px;
+      resize:vertical;
+    }
+    input[type="color"]{
+      width:100%; height:44px; padding:4px; border-radius:12px;
+      border:1px solid #cde7a5; background:#fff;
+    }
+    input:focus, select:focus {
+      border-color:var(--primary);
+      box-shadow:0 0 0 3px rgba(157,230,0,.22);
+    }
+    button {
+      border:none; padding:11px 12px; background:linear-gradient(180deg, var(--primary), var(--primary-dark)); color:#000;
+      font-weight:700; margin-top:8px; cursor:pointer;
+    }
+    button.secondary { background:var(--secondary); color:#000; }
+    button.danger { background:linear-gradient(180deg, #ea7a7a, var(--danger)); color:#fff; }
+
+    .row { display:grid; grid-template-columns: 1fr auto; gap:8px; }
+    .row button { width:auto; min-width:72px; margin-top:0; }
+
+    .legend {
+      display:grid; grid-template-columns:repeat(5, 1fr); height:14px; overflow:hidden;
+      border-radius:999px; border:1px solid #dbe9dd; margin-top:8px;
+    }
+    .legend-labels {
+      display:flex; justify-content:space-between; font-size:11px; color:#222; margin-top:5px;
+    }
+
+    .stats {
+      font-size:13px; line-height:1.5; background:#f5ffd8;
+      border:1px solid #dbeedc; border-radius:12px; padding:11px; color:#000;
+    }
+
+    .leaflet-top.leaflet-left{ top:72px; }
+    .leaflet-control-zoom{
+      border-radius:12px !important;
+      overflow:hidden;
+      box-shadow:var(--shadow);
+      border:1px solid rgba(0,0,0,.14);
+    }
+    .leaflet-control-zoom a{ color:#000 !important; }
+
+    .zip-code-label {
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #d5e7d8;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.10);
+      color: #000;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 4px;
+    }
+
+    @media (max-width: 640px){
+      .panel{ width:calc(100vw - 24px); }
+      .topbar{ grid-template-columns: 1fr 92px 88px; gap:8px; padding:12px; }
+      .topbar-title{ font-size:18px; }
+      .teamLaunchBtn{ width:92px; height:44px; font-size:15px; }
+      .menuBtn{ width:88px; height:44px; }
+    }
+  </style>
 
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
-
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Territory Manager">
 <meta name="theme-color" content="#9DE600">
-
-<style>
-body{
-margin:0;
-font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto;
-background:#000;
-color:#fff;
-display:flex;
-align-items:center;
-justify-content:center;
-height:100vh;
-}
-</style>
 </head>
-
 <body>
-Territory Manager
+  <div class="topbar">
+    <div class="topbar-title">Territory Manager</div>
+    <button id="teamMenuBtn" class="teamLaunchBtn">Teams</button>
+    <button id="menuBtn" class="menuBtn">Menu</button>
+  </div>
+
+  <div id="teamPanel" class="panel team-panel">
+    <div class="panel-header">
+      <button id="closeTeamBtn" class="closeBtn">Close</button>
+      <h1>Teams</h1>
+    </div>
+    <div style="padding:12px;">
+      <div class="small">Choose each team name and color here. Set Owner Team and Handoff Team inside each area popup.</div>
+
+      <div class="section">
+        <div class="section-title">Team names</div>
+        <label for="team1Name">Team 1 name</label>
+        <input id="team1Name" type="text" placeholder="Team 1">
+        <label for="team2Name">Team 2 name</label>
+        <input id="team2Name" type="text" placeholder="Team 2">
+        <label for="team3Name">Team 3 name</label>
+        <input id="team3Name" type="text" placeholder="Team 3">
+        <label for="team4Name">Team 4 name</label>
+        <input id="team4Name" type="text" placeholder="Team 4">
+        <button id="saveTeamNamesBtn" class="secondary">Save team names</button>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Team colors</div>
+        <label for="team1Color">Team 1 color</label>
+        <input id="team1Color" type="color">
+        <label for="team2Color">Team 2 color</label>
+        <input id="team2Color" type="color">
+        <label for="team3Color">Team 3 color</label>
+        <input id="team3Color" type="color">
+        <label for="team4Color">Team 4 color</label>
+        <input id="team4Color" type="color">
+        <button id="saveTeamColorsBtn" class="secondary">Save team colors</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel" class="panel">
+    <div class="panel-header">
+      <button id="closeBtn" class="closeBtn">Close</button>
+      <h1>Territory Manager</h1>
+    </div>
+    <div style="padding:12px;">
+      <div class="small">Track ZIPs and cities, search faster, manage overdue territories, and keep notes for each area.</div>
+
+      <div class="section">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Search ZIP / City</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+        <div class="row">
+          <input id="searchInput" placeholder="Try 95823 or Auburn">
+          <button id="searchBtn">Find</button>
+        </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Overdue timing</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+        <label for="timeMode">Use days, weeks, or months</label>
+        <select id="timeMode">
+          <option value="weeks">Weeks</option>
+          <option value="days">Days</option>
+          <option value="months">Months</option>
+        </select>
+
+        <label for="thresholdValue">Turn ready again after</label>
+        <input id="thresholdValue" type="number" min="1" max="365" step="1">
+        </div>
+      </div>
+
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">ZIP appearance</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+        <label for="zipFill">Unchecked ZIP fill</label>
+        <select id="zipFill">
+          <option value="none">Transparent</option>
+          <option value="gray">Light gray</option>
+        </select>
+        <label for="zipWeight">ZIP line thickness</label>
+        <input id="zipWeight" type="range" min="2" max="6" step="0.5">
+        <label for="showZipLabels">ZIP code labels</label>
+        <select id="showZipLabels">
+          <option value="off">Off</option>
+          <option value="on">On</option>
+        </select>
+        <button id="refreshZipBtn" class="secondary">Refresh ZIP lines from web</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Quick actions</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+        <button id="markTodayBtn">Mark selected area today</button>
+        <input id="date" type="date">
+        <button id="setDateBtn" class="secondary">Set selected area date</button>
+        <button id="clearDateBtn" class="danger">Clear selected area date</button>
+        </div>
+      </div>
+
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Legend</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+        <div class="legend">
+          <div id="legend1"></div><div id="legend2"></div><div id="legend3"></div><div id="legend4"></div><div id="legend5"></div>
+        </div>
+        <div class="legend-labels">
+          <span>Recent</span>
+          <span id="legendTarget">~ 12 weeks</span>
+        </div>
+        </div>
+      </div>
+
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Area notes</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+          <div class="small">Write notes for the currently selected ZIP or city.</div>
+          <label for="menuNotes">Selected area notes</label>
+          <textarea id="menuNotes" placeholder="Select an area on the map, then add notes here..."></textarea>
+          <button id="saveMenuNotesBtn" class="secondary">Save selected area notes</button>
+          <button id="clearMenuNotesBtn" class="secondary">Clear selected area notes</button>
+        </div>
+      </div>
+
+      <div class="section collapsed">
+        <div class="section-header" onclick="toggleSection(this.parentElement)">
+          <div class="section-title">Coverage</div>
+          <div class="section-chevron">▾</div>
+        </div>
+        <div class="section-content">
+          <div id="stats" class="stats">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Clear any old service workers and caches so stale UI stops appearing.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(reg => reg.unregister()));
+    }
+    if ('caches' in window) {
+      caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+    }
+
+    const STORAGE_KEY = "territory-manager-live-v1";
+    const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
+    const CITY_URL = "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/California_Cities/FeatureServer/0/query?where=1=1&outFields=*&outSR=4326&f=geojson";
+    const SOUTH_LIMIT = 38.05;
+    const CITY_CACHE_KEY = "cityGeoJSONNorth";
+    const DB_NAME = "territoryManagerDB";
+    const STORE_NAME = "cache";
+
+    const map = L.map("map", { preferCanvas: true }).setView([39.1, -121.4], 7);
+    const canvasRenderer = L.canvas({ padding: 0.5 });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    let state = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!state) {
+      state = {
+        settings: {
+          zipFill: "none",
+          zipWeight: 3.5,
+          timeMode: "weeks",
+          thresholdValue: 12,
+          showZipLabels: false,
+          teamColors: {
+            team1: "#2563eb",
+            team2: "#9333ea",
+            team3: "#ec4899",
+            team4: "#0f766e"
+          },
+          teamNames: {
+            team1: "Team 1",
+            team2: "Team 2",
+            team3: "Team 3",
+            team4: "Team 4"
+          },
+          teamGradient: {
+            startTeam: "team1",
+            endTeam: "team4"
+          }
+        },
+        zips: {},
+        cities: {},
+        zipTeams: {},
+        cityTeams: {},
+        zipGradientTeams: {},
+        cityGradientTeams: {},
+        zipNotes: {},
+        cityNotes: {}
+      };
+    } else {
+      state.settings = state.settings || {};
+      if (!state.settings.timeMode) state.settings.timeMode = "weeks";
+      if (!state.settings.thresholdValue) state.settings.thresholdValue = 12;
+      if (!state.settings.zipFill) state.settings.zipFill = "none";
+      if (!state.settings.zipWeight) state.settings.zipWeight = 3.5;
+      if (state.settings.showZipLabels === undefined) state.settings.showZipLabels = false;
+      state.settings.teamColors = state.settings.teamColors || {
+        team1: "#2563eb",
+        team2: "#9333ea",
+        team3: "#ec4899",
+        team4: "#0f766e"
+      };
+      state.settings.teamNames = state.settings.teamNames || {
+        team1: "Team 1",
+        team2: "Team 2",
+        team3: "Team 3",
+        team4: "Team 4"
+      };
+      state.settings.teamGradient = state.settings.teamGradient || {
+        startTeam: "team1",
+        endTeam: "team4"
+      };
+      state.zips = state.zips || {};
+      state.cities = state.cities || {};
+      state.zipTeams = state.zipTeams || {};
+      state.cityTeams = state.cityTeams || {};
+      state.zipGradientTeams = state.zipGradientTeams || {};
+      state.cityGradientTeams = state.cityGradientTeams || {};
+      state.zipNotes = state.zipNotes || {};
+      state.cityNotes = state.cityNotes || {};
+    }
+
+    let zipLayer = null;
+    let cityLayer = null;
+    let selected = null;
+    let selectedType = "zip";
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    function getMode() {
+      if (state.settings.timeMode === "days") return "days";
+      if (state.settings.timeMode === "months") return "months";
+      return "weeks";
+    }
+
+    function getThreshold() {
+      const raw = Number(state.settings.thresholdValue);
+      const mode = getMode();
+      if (!Number.isFinite(raw)) {
+        if (mode === "days") return 30;
+        if (mode === "months") return 3;
+        return 12;
+      }
+      const max = mode === "days" ? 365 : mode === "months" ? 24 : 52;
+      return Math.max(1, Math.min(max, raw));
+    }
+
+    function elapsedUnits(dateStr) {
+      if (!dateStr) return null;
+      const then = new Date(dateStr + "T00:00:00");
+      const diffDays = Math.max(0, (Date.now() - then.getTime()) / (1000 * 60 * 60 * 24));
+      const mode = getMode();
+      if (mode === "days") return diffDays;
+      if (mode === "months") return diffDays / 30.4375;
+      return diffDays / 7;
+    }
+
+    function getTeamColors() {
+      return state.settings.teamColors || {
+        team1: "#2563eb",
+        team2: "#9333ea",
+        team3: "#ec4899",
+        team4: "#0f766e"
+      };
+    }
+
+    function getTeamNames() {
+      return state.settings.teamNames || {
+        team1: "Team 1",
+        team2: "Team 2",
+        team3: "Team 3",
+        team4: "Team 4"
+      };
+    }
+
+    function teamDisplayName(teamKey) {
+      return getTeamNames()[teamKey] || String(teamKey || "");
+    }
+
+    function hexToRgb(hex) {
+      const clean = String(hex || "").replace("#", "");
+      const full = clean.length === 3 ? clean.split("").map(c => c + c).join("") : clean;
+      const num = parseInt(full, 16);
+      return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+
+    function rgbToHex(r, g, b) {
+      const toHex = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+      return "#" + toHex(r) + toHex(g) + toHex(b);
+    }
+
+    function mixColors(a, b, t) {
+      const ca = hexToRgb(a);
+      const cb = hexToRgb(b);
+      return rgbToHex(
+        ca.r + (cb.r - ca.r) * t,
+        ca.g + (cb.g - ca.g) * t,
+        ca.b + (cb.b - ca.b) * t
+      );
+    }
+
+    function getAreaGradient(type, key) {
+      if (!key) return null;
+      if (type === "zip") return (state.zipGradientTeams || {})[key] || null;
+      return (state.cityGradientTeams || {})[key] || null;
+    }
+
+    function gradientEndpoints(type, key) {
+      const colors = getTeamColors();
+      const perArea = getAreaGradient(type, key);
+      const grad = perArea || state.settings.teamGradient || {};
+      return {
+        start: colors[grad.startTeam || "team1"] || "#2563eb",
+        end: colors[grad.endTeam || "team4"] || "#0f766e"
+      };
+    }
+
+    function gradientLabel(type, key) {
+      const perArea = getAreaGradient(type, key);
+      const grad = perArea || state.settings.teamGradient || {};
+      const start = teamDisplayName(grad.startTeam || "team1");
+      const end = teamDisplayName(grad.endTeam || "team4");
+      return start + " → " + end;
+    }
+
+    function zoneColor(dateStr, type, key) {
+      if (!dateStr) {
+        return state.settings.zipFill === "gray" ? "#d1d5db" : "transparent";
+      }
+      const elapsed = elapsedUnits(dateStr);
+      const target = getThreshold();
+      const pct = Math.max(0, Math.min(1, elapsed / target));
+      const endpoints = gradientEndpoints(type, key);
+      return mixColors(endpoints.start, endpoints.end, pct);
+    }
+
+    function zipCodeFromFeature(feature) {
+      const p = feature.properties || {};
+      return String(
+        p.ZCTA5CE10 || p.ZCTA5CE20 || p.zip_code || p.ZIP_CODE || p.zip || p.name || ""
+      );
+    }
+
+    function cityNameFromFeature(feature) {
+      const p = feature.properties || {};
+      return String(p.NAME || p.name || p.CITY || p.city || "");
+    }
+
+    function getAreaTeam(type, key) {
+      if (type === "zip") return (state.zipTeams || {})[key] || "";
+      return (state.cityTeams || {})[key] || "";
+    }
+
+    function teamBorderColor(type, key, fallback) {
+      const team = getAreaTeam(type, key);
+      const colors = getTeamColors();
+      return colors[team] || fallback;
+    }
+
+    function zipStyle(feature) {
+      const zip = zipCodeFromFeature(feature);
+      const isSelected = selectedType === "zip" && selected === zip;
+      const zoom = map.getZoom();
+
+      let sliderWeight = Number(state.settings.zipWeight || 3.5);
+      let baseWeight = sliderWeight;
+      if (zoom <= 6) baseWeight = Math.max(0.35, sliderWeight * 0.18);
+      else if (zoom <= 7) baseWeight = Math.max(0.55, sliderWeight * 0.28);
+      else if (zoom <= 8) baseWeight = Math.max(0.85, sliderWeight * 0.42);
+      else if (zoom <= 9) baseWeight = Math.max(1.2, sliderWeight * 0.62);
+
+      const last = state.zips[zip];
+
+      return {
+        renderer: canvasRenderer,
+        color: teamBorderColor("zip", zip, isSelected ? "#2563eb" : "#111827"),
+        weight: isSelected ? baseWeight + 1.1 : baseWeight,
+        opacity: 0.92,
+        fillColor: zoneColor(last, "zip", zip),
+        fillOpacity: last ? 0.50 : (state.settings.zipFill === "gray" ? 0.12 : 0)
+      };
+    }
+
+    function cityStyle(feature) {
+      const city = cityNameFromFeature(feature);
+      const isSelected = selectedType === "city" && selected === city;
+      const last = state.cities[city];
+      return {
+        renderer: canvasRenderer,
+        color: teamBorderColor("city", city, isSelected ? "#2563eb" : "#ffffff"),
+        weight: isSelected ? 2.5 : 1.2,
+        opacity: 1,
+        fillColor: zoneColor(last, "city", city),
+        fillOpacity: last ? 0.68 : 0.18
+      };
+    }
+
+    function bindZipTooltip(layer, feature) {
+      const zip = zipCodeFromFeature(feature);
+      layer.bindTooltip(zip, {
+        permanent: true,
+        direction: "center",
+        className: "zip-code-label"
+      });
+      updateZipTooltips();
+    }
+
+    function updateZipTooltips() {
+      if (!zipLayer) return;
+      const show = !!state.settings.showZipLabels;
+      zipLayer.eachLayer(layer => {
+        if (show) {
+          try { layer.openTooltip(); } catch (e) {}
+        } else {
+          try { layer.closeTooltip(); } catch (e) {}
+        }
+      });
+    }
+
+    function updateLegend() {
+      document.getElementById("legendTarget").textContent = "~ " + getThreshold() + " " + getMode();
+      const endpoints = gradientEndpoints();
+      document.getElementById("legend1").style.background = mixColors(endpoints.start, endpoints.end, 0.0);
+      document.getElementById("legend2").style.background = mixColors(endpoints.start, endpoints.end, 0.25);
+      document.getElementById("legend3").style.background = mixColors(endpoints.start, endpoints.end, 0.5);
+      document.getElementById("legend4").style.background = mixColors(endpoints.start, endpoints.end, 0.75);
+      document.getElementById("legend5").style.background = mixColors(endpoints.start, endpoints.end, 1.0);
+    }
+
+    function updateThresholdInput() {
+      const mode = getMode();
+      const input = document.getElementById("thresholdValue");
+      input.max = mode === "days" ? "365" : mode === "months" ? "24" : "52";
+      input.value = getThreshold();
+    }
+
+    function updateStats() {
+      const trackedZips = Object.values(state.zips).filter(Boolean).length;
+      const trackedCities = Object.values(state.cities).filter(Boolean).length;
+
+      let selectedText = "No area selected yet.";
+      if (selected) {
+        if (selectedType === "zip") {
+          selectedText =
+            "<strong>Selected ZIP:</strong> " + selected +
+            "<br><strong>Last visited:</strong> " + (state.zips[selected] || "Not set") +
+            "<br><strong>Team:</strong> " + (getAreaTeam("zip", selected) || "None") +
+            "<br><strong>Gradient:</strong> " + gradientLabel("zip", selected);
+        } else {
+          selectedText =
+            "<strong>Selected city:</strong> " + selected +
+            "<br><strong>Last visited:</strong> " + (state.cities[selected] || "Not set") +
+            "<br><strong>Team:</strong> " + (getAreaTeam("city", selected) || "None") +
+            "<br><strong>Gradient:</strong> " + gradientLabel("city", selected);
+        }
+      }
+
+      const menuNotes = document.getElementById("menuNotes");
+      if (menuNotes) {
+        menuNotes.value = getSelectedNotes();
+      }
+
+      document.getElementById("stats").innerHTML =
+        selectedText +
+        "<br><br><strong>ZIPs tracked:</strong> " + trackedZips +
+        "<br><strong>Cities tracked:</strong> " + trackedCities;
+    }
+
+    function redrawAllLayers() {
+      if (zipLayer) {
+        zipLayer.setStyle(zipStyle);
+        updateZipTooltips();
+      }
+      if (cityLayer) {
+        cityLayer.setStyle(cityStyle);
+      }
+      updateThresholdInput();
+      updateLegend();
+      updateStats();
+      saveState();
+    }
+
+    function toggleSection(sectionEl) {
+      sectionEl.classList.toggle("collapsed");
+    }
+
+    function getSelectedNotes() {
+      if (!selected) return "";
+      if (selectedType === "zip") return (state.zipNotes || {})[selected] || "";
+      return (state.cityNotes || {})[selected] || "";
+    }
+
+    window.popupMarkToday = function () {
+      if (!selected) return;
+      const today = new Date().toISOString().split("T")[0];
+      if (selectedType === "zip") state.zips[selected] = today;
+      if (selectedType === "city") state.cities[selected] = today;
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupYesterday = function () {
+      if (!selected) return;
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      const value = d.toISOString().split("T")[0];
+      if (selectedType === "zip") state.zips[selected] = value;
+      if (selectedType === "city") state.cities[selected] = value;
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupSaveDate = function () {
+      if (!selected) return;
+      const el = document.getElementById("popupDate");
+      if (!el || !el.value) return;
+      if (selectedType === "zip") state.zips[selected] = el.value;
+      if (selectedType === "city") state.cities[selected] = el.value;
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupSaveTeamsGradient = function () {
+      if (!selected) return;
+
+      const ownerEl = document.getElementById("popupOwnerTeam");
+      const handoffEl = document.getElementById("popupHandoffTeam");
+      const owner = ownerEl ? ownerEl.value : "";
+      const handoff = handoffEl ? handoffEl.value : "team4";
+
+      if (selectedType === "zip") {
+        if (owner) state.zipTeams[selected] = owner;
+        else delete state.zipTeams[selected];
+        state.zipGradientTeams[selected] = {
+          startTeam: owner || "team1",
+          endTeam: handoff || "team4"
+        };
+      }
+
+      if (selectedType === "city") {
+        if (owner) state.cityTeams[selected] = owner;
+        else delete state.cityTeams[selected];
+        state.cityGradientTeams[selected] = {
+          startTeam: owner || "team1",
+          endTeam: handoff || "team4"
+        };
+      }
+
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupSaveNotes = function () {
+      if (!selected) return;
+      const notesEl = document.getElementById("popupNotes");
+      const notes = notesEl ? notesEl.value.trim() : "";
+      if (selectedType === "zip") {
+        if (notes) state.zipNotes[selected] = notes;
+        else delete state.zipNotes[selected];
+      }
+      if (selectedType === "city") {
+        if (notes) state.cityNotes[selected] = notes;
+        else delete state.cityNotes[selected];
+      }
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    window.popupClearDate = function () {
+      if (!selected) return;
+      if (selectedType === "zip") delete state.zips[selected];
+      if (selectedType === "city") delete state.cities[selected];
+      redrawAllLayers();
+      map.closePopup();
+    };
+
+    function openDb() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (event) => {
+          const db = event.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function cachePut(key, value) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readwrite");
+        tx.objectStore(STORE_NAME).put(value, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    async function cacheGet(key) {
+      const db = await openDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, "readonly");
+        const req = tx.objectStore(STORE_NAME).get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function popupHtml(label, last, type, key) {
+      const currentTeam = getAreaTeam(type, key) || "";
+      const currentGrad = getAreaGradient(type, key) || state.settings.teamGradient || { startTeam: "team1", endTeam: "team4" };
+      const currentNotes = type === "zip"
+        ? ((state.zipNotes || {})[key] || "")
+        : ((state.cityNotes || {})[key] || "");
+      return `
+        <div style="min-width:220px">
+          <strong>${label}</strong><br>
+          Last visited: ${last || "Not set"}<br>
+          <button onclick="popupMarkToday()">Mark Today</button>
+          <button class="secondary" onclick="popupYesterday()">Mark Yesterday</button>
+          <input type="date" id="popupDate">
+          <button onclick="popupSaveDate()">Save Date</button>
+
+          <label style="display:block;margin-top:8px;font-weight:700;">Owner Team</label>
+          <select id="popupOwnerTeam">
+            <option value="" ${currentTeam === "" ? "selected" : ""}>None</option>
+            <option value="team1" ${currentTeam === "team1" ? "selected" : ""}>${teamDisplayName("team1")}</option>
+            <option value="team2" ${currentTeam === "team2" ? "selected" : ""}>${teamDisplayName("team2")}</option>
+            <option value="team3" ${currentTeam === "team3" ? "selected" : ""}>${teamDisplayName("team3")}</option>
+            <option value="team4" ${currentTeam === "team4" ? "selected" : ""}>${teamDisplayName("team4")}</option>
+          </select>
+
+          <label style="display:block;margin-top:8px;font-weight:700;">Handoff Team</label>
+          <select id="popupHandoffTeam">
+            <option value="team1" ${currentGrad.endTeam === "team1" ? "selected" : ""}>${teamDisplayName("team1")}</option>
+            <option value="team2" ${currentGrad.endTeam === "team2" ? "selected" : ""}>${teamDisplayName("team2")}</option>
+            <option value="team3" ${currentGrad.endTeam === "team3" ? "selected" : ""}>${teamDisplayName("team3")}</option>
+            <option value="team4" ${currentGrad.endTeam === "team4" ? "selected" : ""}>${teamDisplayName("team4")}</option>
+          </select>
+          <button class="secondary" onclick="popupSaveTeamsGradient()">Apply Teams Gradient</button>
+
+          <label style="display:block;margin-top:8px;font-weight:700;">Notes</label>
+          <textarea id="popupNotes" placeholder="Add notes for this area...">${currentNotes}</textarea>
+          <button class="secondary" onclick="popupSaveNotes()">Save Notes</button>
+
+          <button class="danger" onclick="popupClearDate()">Clear Date</button>
+        </div>
+      `;
+    }
+
+    function centerLat(feature) {
+      const layer = L.geoJSON(feature);
+      const b = layer.getBounds();
+      return (b.getNorth() + b.getSouth()) / 2;
+    }
+
+    function filterNorth(data) {
+      return {
+        type: "FeatureCollection",
+        features: (data.features || []).filter(f => {
+          try { return centerLat(f) >= SOUTH_LIMIT; } catch { return false; }
+        })
+      };
+    }
+
+    async function renderZipData(data) {
+      if (zipLayer) map.removeLayer(zipLayer);
+      zipLayer = L.geoJSON(data, {
+        renderer: canvasRenderer,
+        style: zipStyle,
+        onEachFeature: (feature, layer) => {
+          bindZipTooltip(layer, feature);
+          layer.on("click", () => {
+            selected = zipCodeFromFeature(feature);
+            selectedType = "zip";
+            redrawAllLayers();
+            layer.bindPopup(popupHtml("ZIP " + selected, state.zips[selected], "zip", selected)).openPopup();
+          });
+        }
+      }).addTo(map);
+      updateThresholdInput();
+      updateLegend();
+      updateStats();
+      updateZipTooltips();
+    }
+
+    async function renderCityData(data) {
+      if (cityLayer) map.removeLayer(cityLayer);
+      cityLayer = L.geoJSON(data, {
+        renderer: canvasRenderer,
+        style: cityStyle,
+        onEachFeature: (feature, layer) => {
+          const city = cityNameFromFeature(feature);
+          layer.on("click", () => {
+            selected = city;
+            selectedType = "city";
+            redrawAllLayers();
+            layer.bindPopup(popupHtml(city, state.cities[city], "city", city)).openPopup();
+          });
+        }
+      }).addTo(map);
+      cityLayer.bringToFront();
+    }
+
+    async function loadZipLayer(forceRefresh = false) {
+      try {
+        if (!forceRefresh) {
+          const cached = await cacheGet("zipGeoJSONNorth");
+          if (cached) await renderZipData(cached);
+        }
+        const res = await fetch(ZIP_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("network failed");
+        const data = await res.json();
+        await cachePut("zipGeoJSONNorth", data);
+        await renderZipData(data);
+      } catch (err) {
+        const cached = await cacheGet("zipGeoJSONNorth");
+        if (cached) await renderZipData(cached);
+      }
+    }
+
+    async function loadCityLayer(forceRefresh = false) {
+      try {
+        if (!forceRefresh) {
+          const cached = await cacheGet(CITY_CACHE_KEY);
+          if (cached) await renderCityData(cached);
+        }
+        const res = await fetch(CITY_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error("network failed");
+        const data = await res.json();
+        const filtered = filterNorth(data);
+        await cachePut(CITY_CACHE_KEY, filtered);
+        await renderCityData(filtered);
+      } catch (err) {
+        const cached = await cacheGet(CITY_CACHE_KEY);
+        if (cached) await renderCityData(cached);
+      }
+    }
+
+    const panel = document.getElementById("panel");
+    const teamPanel = document.getElementById("teamPanel");
+    const menuBtn = document.getElementById("menuBtn");
+    const teamMenuBtn = document.getElementById("teamMenuBtn");
+
+    function openMenu() {
+      panel.classList.add("open");
+      teamPanel.style.display = "none";
+      menuBtn.classList.add("hidden");
+      teamMenuBtn.classList.remove("hidden");
+    }
+    function closeMenu() {
+      panel.classList.remove("open");
+      menuBtn.classList.remove("hidden");
+    }
+    function openTeamMenu() {
+      teamPanel.style.display = "block";
+      panel.classList.remove("open");
+      teamMenuBtn.classList.add("hidden");
+      menuBtn.classList.remove("hidden");
+    }
+    function closeTeamMenu() {
+      teamPanel.style.display = "none";
+      teamMenuBtn.classList.remove("hidden");
+    }
+
+    menuBtn.addEventListener("click", openMenu);
+    teamMenuBtn.addEventListener("click", openTeamMenu);
+    document.getElementById("closeBtn").addEventListener("click", closeMenu);
+    document.getElementById("closeTeamBtn").addEventListener("click", closeTeamMenu);
+
+    document.getElementById("zipFill").value = state.settings.zipFill || "none";
+    document.getElementById("zipWeight").value = state.settings.zipWeight || 3.5;
+    document.getElementById("showZipLabels").value = state.settings.showZipLabels ? "on" : "off";
+    document.getElementById("timeMode").value = getMode();
+    document.getElementById("team1Color").value = (state.settings.teamColors || {}).team1 || "#2563eb";
+    document.getElementById("team2Color").value = (state.settings.teamColors || {}).team2 || "#9333ea";
+    document.getElementById("team3Color").value = (state.settings.teamColors || {}).team3 || "#ec4899";
+    document.getElementById("team4Color").value = (state.settings.teamColors || {}).team4 || "#0f766e";    updateThresholdInput();
+
+    document.getElementById("zipFill").addEventListener("change", (e) => {
+      state.settings.zipFill = e.target.value;
+      redrawAllLayers();
+    });
+    document.getElementById("zipWeight").addEventListener("input", (e) => {
+      state.settings.zipWeight = Number(e.target.value);
+      redrawAllLayers();
+    });
+    document.getElementById("showZipLabels").addEventListener("change", (e) => {
+      state.settings.showZipLabels = e.target.value === "on";
+      redrawAllLayers();
+    });
+
+    document.getElementById("saveTeamNamesBtn").addEventListener("click", () => {
+      state.settings.teamNames = {
+        team1: document.getElementById("team1Name").value.trim() || "Team 1",
+        team2: document.getElementById("team2Name").value.trim() || "Team 2",
+        team3: document.getElementById("team3Name").value.trim() || "Team 3",
+        team4: document.getElementById("team4Name").value.trim() || "Team 4"
+      };
+      redrawAllLayers();
+    });
+
+    document.getElementById("saveMenuNotesBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const notes = document.getElementById("menuNotes").value.trim();
+      if (selectedType === "zip") {
+        if (notes) state.zipNotes[selected] = notes;
+        else delete state.zipNotes[selected];
+      } else {
+        if (notes) state.cityNotes[selected] = notes;
+        else delete state.cityNotes[selected];
+      }
+      redrawAllLayers();
+    });
+
+    document.getElementById("clearMenuNotesBtn").addEventListener("click", () => {
+      if (!selected) return;
+      if (selectedType === "zip") delete state.zipNotes[selected];
+      else delete state.cityNotes[selected];
+      redrawAllLayers();
+    });
+    document.getElementById("saveTeamColorsBtn").addEventListener("click", () => {
+      state.settings.teamColors = {
+        team1: document.getElementById("team1Color").value,
+        team2: document.getElementById("team2Color").value,
+        team3: document.getElementById("team3Color").value,
+        team4: document.getElementById("team4Color").value
+      };
+      redrawAllLayers();
+    });
+
+    document.getElementById("timeMode").addEventListener("change", (e) => {
+      if (e.target.value === "days") state.settings.timeMode = "days";
+      else if (e.target.value === "months") state.settings.timeMode = "months";
+      else state.settings.timeMode = "weeks";
+      redrawAllLayers();
+    });
+    document.getElementById("thresholdValue").addEventListener("change", (e) => {
+      const val = Number(e.target.value);
+      const mode = getMode();
+      const max = mode === "days" ? 365 : mode === "months" ? 24 : 52;
+      const fallback = mode === "days" ? 30 : mode === "months" ? 3 : 12;
+      state.settings.thresholdValue = Number.isFinite(val) ? Math.max(1, Math.min(max, val)) : fallback;
+      redrawAllLayers();
+    });
+    document.getElementById("refreshZipBtn").addEventListener("click", () => loadZipLayer(true));
+    document.getElementById("markTodayBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const today = new Date().toISOString().split("T")[0];
+      if (selectedType === "zip") state.zips[selected] = today;
+      if (selectedType === "city") state.cities[selected] = today;
+      redrawAllLayers();
+    });
+    document.getElementById("setDateBtn").addEventListener("click", () => {
+      if (!selected) return;
+      const d = document.getElementById("date").value;
+      if (!d) return;
+      if (selectedType === "zip") state.zips[selected] = d;
+      if (selectedType === "city") state.cities[selected] = d;
+      redrawAllLayers();
+    });
+    document.getElementById("clearDateBtn").addEventListener("click", () => {
+      if (!selected) return;
+      if (selectedType === "zip") delete state.zips[selected];
+      if (selectedType === "city") delete state.cities[selected];
+      redrawAllLayers();
+    });
+
+    function findZip(query) {
+      return String(query || "").trim().replace(/\D/g, "");
+    }
+
+    function zoomToZip(zip) {
+      if (!zipLayer) return false;
+      let found = false;
+      zipLayer.eachLayer(layer => {
+        const code = zipCodeFromFeature(layer.feature);
+        if (code === zip) {
+          found = true;
+          selected = zip;
+          selectedType = "zip";
+          redrawAllLayers();
+          map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+          layer.bindPopup(popupHtml("ZIP " + zip, state.zips[zip], "zip", zip)).openPopup();
+        }
+      });
+      return found;
+    }
+
+    document.getElementById("searchBtn").addEventListener("click", () => {
+      const raw = document.getElementById("searchInput").value.trim();
+      const zip = findZip(raw);
+      let foundCity = false;
+
+      if (cityLayer && raw) {
+        cityLayer.eachLayer(layer => {
+          const city = cityNameFromFeature(layer.feature).toLowerCase();
+          if (!foundCity && city.includes(raw.toLowerCase())) {
+            foundCity = true;
+            selected = cityNameFromFeature(layer.feature);
+            selectedType = "city";
+            redrawAllLayers();
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+            layer.bindPopup(popupHtml(selected, state.cities[selected], "city", selected)).openPopup();
+          }
+        });
+      }
+
+      if (!foundCity && (!zip || !zoomToZip(zip))) {
+        alert("No city or ZIP match found.");
+      }
+    });
+
+    map.on("zoomend", () => {
+      if (zipLayer) {
+        zipLayer.setStyle(zipStyle);
+        updateZipTooltips();
+      }
+    });
+
+    updateThresholdInput();
+    updateLegend();
+    updateStats();
+    loadZipLayer(false);
+    loadCityLayer(false);
+  </script>
 </body>
 </html>
