@@ -48,6 +48,7 @@ let isDrawing = false;
 let drawingPoints = [];
 let editingCoverageId = null;
 let isPointerDrawing = false;
+let zipPopupOpen = false;
 
 const hasSupabase = Boolean(window.TM_SUPABASE_URL && window.TM_SUPABASE_ANON_KEY);
 
@@ -410,6 +411,7 @@ function teamOptions(selectedId) {
   return state.teams.map(t => `<option value="${t.id}" ${selectedId === t.id ? "selected" : ""}>${t.name}</option>`).join("");
 }
 function openZipPopup(layer, zip) {
+  zipPopupOpen = true;
   const t = state.territories[zip] || {};
   const defaultOwner = state.teams[0]?.id || "team1";
   const defaultHandoff = state.teams[1]?.id || defaultOwner;
@@ -455,6 +457,7 @@ window.markToday = async function(zip) {
   state.territories[zip].last_worked = new Date().toISOString().slice(0,10);
   await saveTerritory(zip);
   refreshMap();
+  zipPopupOpen = true;
 };
 
 window.setZipDate = async function(zip, dateValue) {
@@ -471,6 +474,7 @@ window.saveDateForZip = async function(zip) {
   state.territories[zip].last_worked = el.value;
   await saveTerritory(zip);
   refreshMap();
+  zipPopupOpen = true;
 };
 
 window.saveTeamsForZip = async function(zip) {
@@ -479,12 +483,14 @@ window.saveTeamsForZip = async function(zip) {
   state.territories[zip].handoff_team_id = document.getElementById("handoff_"+zip).value;
   await saveTerritory(zip);
   refreshMap();
+  zipPopupOpen = true;
 };
 window.saveNotesForZip = async function(zip) {
   state.territories[zip] = state.territories[zip] || {};
   state.territories[zip].notes = document.getElementById("notes_"+zip).value.trim();
   await saveTerritory(zip);
   refreshMap();
+  zipPopupOpen = true;
 };
 window.clearZip = async function(zip) {
   delete state.territories[zip];
@@ -549,6 +555,7 @@ function polygonCenterFromGeometry(geometry) {
 }
 
 function openCoverageEditor(id) {
+  zipPopupOpen = false;
   selectedCoverageId = id;
   const a = state.coverageAreas[id];
   if (!a) return;
@@ -909,13 +916,15 @@ function makeCoverageId() {
 }
 
 function hideDrawPanelForDrawing() {
+  if (!isDrawing) return;
   const panel = document.getElementById("drawPanel");
   if (panel) panel.classList.add("hidden");
 }
 
 function showDrawPanelAfterStroke() {
+  if (!isDrawing) return;
   const panel = document.getElementById("drawPanel");
-  if (panel && isDrawing) panel.classList.remove("hidden");
+  if (panel) panel.classList.remove("hidden");
 }
 
 function hideDrawPanelDone() {
@@ -1303,6 +1312,7 @@ function initControls() {
   document.getElementById("thresholdInput").value = state.settings.threshold;
   renderTeamsEditor();
 }
+map.on("popupclose", () => { zipPopupOpen = false; });
 map.on("moveend zoomend", () => {
   if (!shouldShowZips() && zipLayer) {
     map.removeLayer(zipLayer);
