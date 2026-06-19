@@ -114,11 +114,30 @@
     </div>
   </div>
 
+
+  <button id="drawFab" class="drawFab" title="Coverage Drawing">✎</button>
+
+  <div id="drawPanel" class="drawPanel hidden">
+    <div class="drawPanelHeader">
+      <strong>Coverage Drawing</strong>
+      <button id="closeDrawPanelBtn" class="miniBtn">×</button>
+    </div>
+    <label>My tag/name</label>
+    <input id="userTagInput" type="text" placeholder="Example: Brandon">
+    <label>My color</label>
+    <input id="userColorInputFab" type="color" value="#22c55e">
+    <button id="saveUserIdentityBtn">Save Tag + Color</button>
+    <button id="startDrawBtnFab">Start Drawing</button>
+    <button id="finishDrawBtnFab" class="secondary">Finish / Save</button>
+    <button id="cancelDrawBtnFab" class="danger">Cancel</button>
+    <div class="small">On mobile: tap Start, then drag your finger on the map. Tap Finish when done.</div>
+  </div>
+
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=6"></script>
-  <script src="bundle.js?v=6"></script>
+  <script src="config.js?v=8"></script>
+  <script src="bundle.js?v=8"></script>
 </body>
 </html>

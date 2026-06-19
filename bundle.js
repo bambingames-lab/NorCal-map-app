@@ -21,7 +21,8 @@ const defaultState = {
     zipZoom: 9,
     timeMode: "months",
     threshold: 3,
-    userColor: "#22c55e"
+    userColor: "#22c55e",
+    userTag: ""
   }
 };
 
@@ -76,6 +77,7 @@ function ensureCoverageState() {
   state.coverageAreas = state.coverageAreas || {};
   state.settings = state.settings || {};
   state.settings.userColor = state.settings.userColor || "#22c55e";
+  state.settings.userTag = state.settings.userTag || "";
 }
 ensureCoverageState();
 
@@ -328,13 +330,22 @@ function renderCoverageAreas() {
     },
     onEachFeature: (feature, layer) => {
       const a = state.coverageAreas[feature.properties.id];
+      const tagText = a.user_tag || a.user_email || "Coverage";
+      layer.bindTooltip(tagText, {
+        permanent: true,
+        direction: "center",
+        className: "coverage-tag-label"
+      });
       layer.bindPopup(`
         <div class="coveragePopup">
           <strong>Coverage area</strong><br>
+          Tag: ${a.user_tag || "Not set"}<br>
           By: ${a.user_email || "Unknown"}<br>
           Date: ${a.last_worked || "Not set"}<br>
           ZIP: ${a.zip || "Not assigned"}<br>
 
+          <label>Tag/name</label>
+          <input id="coverageTag_${a.id}" type="text" value="${a.user_tag || ""}" placeholder="Tag above drawing">
           <label>Area color</label>
           <input id="coverageColor_${a.id}" type="color" value="${a.color || "#22c55e"}">
 
@@ -412,6 +423,7 @@ async function loadCloudData() {
         zip: a.zip,
         user_id: a.user_id,
         user_email: a.user_email,
+        user_tag: a.user_tag || "",
         color: a.color,
         last_worked: a.last_worked,
         geometry: a.geometry
@@ -450,6 +462,7 @@ function subscribeRealtime() {
         zip: row.zip,
         user_id: row.user_id,
         user_email: row.user_email,
+        user_tag: row.user_tag || "",
         color: row.color,
         last_worked: row.last_worked,
         geometry: row.geometry
@@ -495,6 +508,7 @@ async function saveCoverageArea(area) {
     zip: area.zip || null,
     user_id: currentUser.id,
     user_email: currentUser.email,
+    user_tag: area.user_tag || state.settings.userTag || currentUser.email,
     color: area.color,
     last_worked: area.last_worked,
     geometry: area.geometry,
@@ -522,9 +536,11 @@ window.saveCoverageDetails = async function(id) {
   const area = state.coverageAreas[id];
   if (!area) return;
 
+  const tagEl = document.getElementById("coverageTag_" + id);
   const colorEl = document.getElementById("coverageColor_" + id);
   const dateEl = document.getElementById("coverageDate_" + id);
 
+  area.user_tag = tagEl ? tagEl.value.trim() : area.user_tag;
   area.color = colorEl ? colorEl.value : area.color;
   area.last_worked = dateEl && dateEl.value ? dateEl.value : area.last_worked;
 
@@ -568,7 +584,10 @@ function startFreehandDrawing() {
   drawingPoints = [];
   document.body.classList.add("drawing-active");
   map.dragging.disable();
+  map.touchZoom.disable();
+  map.scrollWheelZoom.disable();
   map.doubleClickZoom.disable();
+  map.getContainer().style.touchAction = "none";
   showDrawHint("Drawing mode: drag your finger over the worked area, then tap Finish. Everyone can see and edit saved drawings.");
 }
 
@@ -578,7 +597,10 @@ function cancelFreehandDrawing() {
   drawingPoints = [];
   document.body.classList.remove("drawing-active");
   map.dragging.enable();
+  map.touchZoom.enable();
+  map.scrollWheelZoom.enable();
   map.doubleClickZoom.enable();
+  map.getContainer().style.touchAction = "";
   if (activeDrawingLayer) {
     map.removeLayer(activeDrawingLayer);
     activeDrawingLayer = null;
@@ -600,6 +622,7 @@ async function finishFreehandDrawing() {
     zip: existing?.zip || nearestSelectedZip(),
     user_id: existing?.user_id || currentUser?.id || "local",
     user_email: existing?.user_email || userDisplayName(),
+    user_tag: existing?.user_tag || state.settings.userTag || userDisplayName(),
     color: existing?.color || state.settings.userColor || "#22c55e",
     last_worked: existing?.last_worked || new Date().toISOString().slice(0,10),
     geometry: {
@@ -629,6 +652,57 @@ function hideDrawHint() {
   if (el) el.remove();
 }
 
+
+function latLngFromPointerEvent(ev) {
+  const rect = map.getContainer().getBoundingClientRect();
+  const point = L.point(ev.clientX - rect.left, ev.clientY - rect.top);
+  return map.containerPointToLatLng(point);
+}
+
+function onDrawPointerDown(ev) {
+  if (!isDrawing) return;
+  ev.preventDefault();
+  drawingPoints = [];
+  const latlng = latLngFromPointerEvent(ev);
+  drawingPoints.push(latlng);
+  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
+  activeDrawingLayer = L.polygon(drawingPoints, {
+    color: state.settings.userColor || "#22c55e",
+    weight: 2,
+    fillColor: state.settings.userColor || "#22c55e",
+    fillOpacity: 0.32
+  }).addTo(map);
+  map.getContainer().setPointerCapture?.(ev.pointerId);
+}
+
+function onDrawPointerMove(ev) {
+  if (!isDrawing || drawingPoints.length === 0) return;
+  ev.preventDefault();
+  const latlng = latLngFromPointerEvent(ev);
+  const last = drawingPoints[drawingPoints.length - 1];
+  if (last && map.latLngToLayerPoint(last).distanceTo(map.latLngToLayerPoint(latlng)) < 4) return;
+  drawingPoints.push(latlng);
+
+  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
+  activeDrawingLayer = L.polygon(drawingPoints, {
+    color: state.settings.userColor || "#22c55e",
+    weight: 2,
+    fillColor: state.settings.userColor || "#22c55e",
+    fillOpacity: 0.32
+  }).addTo(map);
+}
+
+function onDrawPointerUp(ev) {
+  if (!isDrawing) return;
+  ev.preventDefault();
+}
+
+map.getContainer().addEventListener("pointerdown", onDrawPointerDown, { passive:false });
+map.getContainer().addEventListener("pointermove", onDrawPointerMove, { passive:false });
+map.getContainer().addEventListener("pointerup", onDrawPointerUp, { passive:false });
+map.getContainer().addEventListener("pointercancel", onDrawPointerUp, { passive:false });
+
+
 function drawPointFromEvent(e) {
   if (!isDrawing) return;
   const latlng = e.latlng || map.mouseEventToLatLng(e.originalEvent || e);
@@ -643,16 +717,6 @@ function drawPointFromEvent(e) {
   }).addTo(map);
 }
 
-map.on("mousedown touchstart", e => {
-  if (!isDrawing) return;
-  drawingPoints = [];
-  drawPointFromEvent(e);
-});
-
-map.on("mousemove touchmove", e => {
-  if (!isDrawing) return;
-  drawPointFromEvent(e);
-});
 
 // Auth
 async function refreshAuth() {
@@ -778,18 +842,52 @@ document.getElementById("saveTimerBtn").onclick = () => {
   refreshMap();
 };
 
-document.getElementById("saveUserColorBtn").onclick = () => {
+if (document.getElementById("saveUserColorBtn")) document.getElementById("saveUserColorBtn").onclick = () => {
   state.settings.userColor = document.getElementById("userColorInput").value || "#22c55e";
   saveLocal();
 };
 
-document.getElementById("startDrawBtn").onclick = startFreehandDrawing;
-document.getElementById("finishDrawBtn").onclick = finishFreehandDrawing;
-document.getElementById("cancelDrawBtn").onclick = cancelFreehandDrawing;
+if (document.getElementById("startDrawBtn")) document.getElementById("startDrawBtn").onclick = startFreehandDrawing;
+if (document.getElementById("finishDrawBtn")) document.getElementById("finishDrawBtn").onclick = finishFreehandDrawing;
+if (document.getElementById("cancelDrawBtn")) document.getElementById("cancelDrawBtn").onclick = cancelFreehandDrawing;
+
+const drawFab = document.getElementById("drawFab");
+const drawPanel = document.getElementById("drawPanel");
+if (drawFab && drawPanel) {
+  drawFab.onclick = () => drawPanel.classList.toggle("hidden");
+}
+const closeDrawPanelBtn = document.getElementById("closeDrawPanelBtn");
+if (closeDrawPanelBtn) closeDrawPanelBtn.onclick = () => drawPanel.classList.add("hidden");
+
+const saveUserIdentityBtn = document.getElementById("saveUserIdentityBtn");
+if (saveUserIdentityBtn) {
+  saveUserIdentityBtn.onclick = () => {
+    const tag = document.getElementById("userTagInput").value.trim();
+    const color = document.getElementById("userColorInputFab").value || "#22c55e";
+    state.settings.userTag = tag;
+    state.settings.userColor = color;
+    const oldColorInput = document.getElementById("userColorInput");
+    if (oldColorInput) oldColorInput.value = color;
+    saveLocal();
+    alert("Drawing tag and color saved.");
+  };
+}
+const startDrawBtnFab = document.getElementById("startDrawBtnFab");
+if (startDrawBtnFab) startDrawBtnFab.onclick = startFreehandDrawing;
+const finishDrawBtnFab = document.getElementById("finishDrawBtnFab");
+if (finishDrawBtnFab) finishDrawBtnFab.onclick = finishFreehandDrawing;
+const cancelDrawBtnFab = document.getElementById("cancelDrawBtnFab");
+if (cancelDrawBtnFab) cancelDrawBtnFab.onclick = cancelFreehandDrawing;
+
 
 function initControls() {
   ensureCoverageState();
-  document.getElementById("userColorInput").value = state.settings.userColor || "#22c55e";
+  const colorInput = document.getElementById("userColorInput");
+  if (colorInput) colorInput.value = state.settings.userColor || "#22c55e";
+  const fabColorInput = document.getElementById("userColorInputFab");
+  if (fabColorInput) fabColorInput.value = state.settings.userColor || "#22c55e";
+  const tagInput = document.getElementById("userTagInput");
+  if (tagInput) tagInput.value = state.settings.userTag || "";
   document.getElementById("zipBoundaryMode").value = state.settings.boundaryMode;
   document.getElementById("zipLabelsMode").value = state.settings.labelsMode;
   document.getElementById("zipZoomInput").value = state.settings.zipZoom;
@@ -802,3 +900,29 @@ initControls();
 renderCoverageAreas();
 refreshAuth();
 loadZipData();
+
+
+(function setupMovableDrawFab(){
+  const fab = document.getElementById("drawFab");
+  if (!fab) return;
+  let dragging = false, moved = false, startX = 0, startY = 0, right = 18, bottom = 22;
+  fab.addEventListener("pointerdown", ev => {
+    dragging = true; moved = false; startX = ev.clientX; startY = ev.clientY;
+    fab.setPointerCapture?.(ev.pointerId);
+  });
+  fab.addEventListener("pointermove", ev => {
+    if (!dragging) return;
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+    startX = ev.clientX; startY = ev.clientY;
+    const rect = fab.getBoundingClientRect();
+    right = Math.max(8, Math.min(window.innerWidth - 66, window.innerWidth - rect.right - dx));
+    bottom = Math.max(8, Math.min(window.innerHeight - 66, window.innerHeight - rect.bottom - dy));
+    fab.style.right = right + "px";
+    fab.style.bottom = bottom + "px";
+  });
+  fab.addEventListener("pointerup", ev => {
+    dragging = false;
+    if (moved) ev.preventDefault();
+  });
+})();
