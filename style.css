@@ -242,3 +242,174 @@ body.drawing-active .leaflet-map-pane{
 .coverage-tag-button:active{
   transform:scale(.96);
 }
+
+
+/* Mobile stability + better menus */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+.topbar {
+  position: fixed !important;
+  top: env(safe-area-inset-top, 0px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 64px !important;
+  z-index: 5000 !important;
+  transform: translateZ(0);
+}
+
+#map {
+  position: fixed !important;
+  top: calc(64px + env(safe-area-inset-top, 0px)) !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  height: auto !important;
+  width: 100vw !important;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.panel {
+  position: fixed !important;
+  top: calc(76px + env(safe-area-inset-top, 0px)) !important;
+  max-height: calc(100dvh - 96px - env(safe-area-inset-top, 0px)) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  z-index: 6000 !important;
+  transform: translateZ(0);
+}
+
+.panel.left {
+  left: 10px !important;
+}
+
+.panel.right {
+  right: 10px !important;
+}
+
+.drawFab {
+  position: fixed !important;
+  right: 18px !important;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  z-index: 6500 !important;
+  transform: translateZ(0);
+}
+
+.drawPanel {
+  position: fixed !important;
+  right: 14px !important;
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
+  z-index: 6500 !important;
+  max-height: calc(100dvh - 150px) !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.leaflet-control-container {
+  z-index: 3000;
+}
+
+.leaflet-top.leaflet-left {
+  top: calc(72px + env(safe-area-inset-top, 0px)) !important;
+}
+
+/* Better mobile popup menu */
+.leaflet-popup {
+  z-index: 7000 !important;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 18px !important;
+  box-shadow: 0 16px 38px rgba(0,0,0,.35) !important;
+  max-width: calc(100vw - 28px) !important;
+}
+
+.leaflet-popup-content {
+  width: 285px !important;
+  max-width: calc(100vw - 52px) !important;
+  margin: 12px !important;
+  font-size: 14px !important;
+  line-height: 1.3 !important;
+}
+
+.leaflet-popup-content label {
+  font-size: 12px !important;
+  margin-top: 8px !important;
+}
+
+.leaflet-popup-content input,
+.leaflet-popup-content select,
+.leaflet-popup-content textarea {
+  font-size: 16px !important; /* prevents iPhone zooming inputs */
+  border-radius: 12px !important;
+}
+
+.leaflet-popup-content button {
+  min-height: 42px !important;
+  border-radius: 12px !important;
+  margin-top: 7px !important;
+}
+
+.coveragePopup,
+.zipQuickMenu {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.coveragePopup strong,
+.zipTitle {
+  display: block;
+  font-size: 17px;
+  margin-bottom: 4px;
+}
+
+.leaflet-popup-close-button {
+  width: 34px !important;
+  height: 34px !important;
+  font-size: 22px !important;
+  line-height: 30px !important;
+  color: #000 !important;
+}
+
+/* Keep tag labels above map but not stuck to zoom transforms incorrectly */
+.coverage-tag-marker {
+  transform: translateZ(0);
+}
+
+/* Small phone cleanup */
+@media (max-width: 430px) {
+  .topbar {
+    gap: 6px !important;
+    padding: 0 8px !important;
+  }
+
+  .brand {
+    font-size: 16px !important;
+  }
+
+  .topBtn {
+    padding: 9px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .panel {
+    width: calc(100vw - 20px) !important;
+    left: 10px !important;
+    right: 10px !important;
+  }
+
+  .drawPanel {
+    width: calc(100vw - 28px) !important;
+    right: 14px !important;
+  }
+}

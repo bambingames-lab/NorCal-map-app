@@ -1177,3 +1177,30 @@ loadZipData();
     if (moved) ev.preventDefault();
   });
 })();
+
+
+// Mobile UI stability: keep app chrome fixed and prevent panels from riding with map zoom.
+function closeLeafletPopupOnZoom() {
+  try { map.closePopup(); } catch {}
+}
+map.on("zoomstart", closeLeafletPopupOnZoom);
+
+function stableMobileViewportRefresh() {
+  setTimeout(() => {
+    try { map.invalidateSize(false); } catch {}
+  }, 120);
+}
+window.addEventListener("resize", stableMobileViewportRefresh);
+window.addEventListener("orientationchange", stableMobileViewportRefresh);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) stableMobileViewportRefresh();
+});
+
+// Prevent menu panels and floating drawing menu from dragging/zooming the map underneath.
+["authPanel", "adminPanel", "menuPanel", "drawPanel"].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  ["touchstart", "touchmove", "pointerdown", "pointermove", "wheel"].forEach(evt => {
+    el.addEventListener(evt, e => e.stopPropagation(), { passive: true });
+  });
+});
