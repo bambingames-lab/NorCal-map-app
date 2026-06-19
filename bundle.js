@@ -27,7 +27,8 @@ const defaultState = {
     userColor: "#22c55e",
     userTag: "",
     coverageFilterMode: "all",
-    coverageFilterTag: ""
+    coverageFilterTag: "",
+    shareLocation: "off"
   }
 };
 
@@ -40,6 +41,10 @@ let zipLayer = null;
 let coverageLayer = null;
 let coverageTagLayer = null;
 let activeDrawingLayer = null;
+let myLocationMarker = null;
+let myAccuracyCircle = null;
+let locationWatchId = null;
+let teamLocationLayer = null;
 let selectedZip = null;
 let selectedCoverageId = null;
 let renderTimer = null;
@@ -298,13 +303,15 @@ function featureInBounds(feature, bounds) {
     return false;
   }
 }
-function shouldShowZips() {
+function shouldShowMapWorkLayers() {
   ensureZipLineSettings();
   if (state.settings.boundaryMode === "off") return false;
-
-  // Always zoom-gate ZIP boundaries so the map stays clean and fast when zoomed out.
   const minZoom = Number(state.settings.zipZoom || 9);
   return map.getZoom() >= minZoom;
+}
+
+function shouldShowZips() {
+  return shouldShowMapWorkLayers();
 }
 function zipStyle(feature) {
   const zip = zipCode(feature);
@@ -569,8 +576,7 @@ function openCoverageEditor(id) {
 window.openCoverageEditor = openCoverageEditor;
 
 function shouldShowCoverageTags() {
-  // User tags stay hidden until zoomed in, except the chosen/selected drawing tag.
-  return map.getZoom() >= 10;
+  return shouldShowMapWorkLayers() && map.getZoom() >= 10;
 }
 
 function renderCoverageAreas() {
@@ -583,6 +589,8 @@ function renderCoverageAreas() {
     map.removeLayer(coverageTagLayer);
     coverageTagLayer = null;
   }
+
+  if (!shouldShowMapWorkLayers()) return;
 
   const features = Object.values(state.coverageAreas || {})
     .filter(a => a && a.geometry)
@@ -762,7 +770,14 @@ function subscribeRealtime() {
       state.settings.threshold = Number(row.threshold || state.settings.threshold || 3);
       saveLocal();
       initControls();
+initLocationControls();
       refreshMap();
+    })
+    .subscribe();
+
+  supabaseClient.channel("user-location-updates")
+    .on("postgres_changes", { event:"*", schema:"public", table:"user_locations" }, () => {
+      loadTeamLocations();
     })
     .subscribe();
 }
@@ -777,6 +792,202 @@ function startCoverageSyncRefresh() {
     }
   }, 15000);
 }
+
+
+// Location services
+function userLocationName() {
+  return state.settings.userTag || currentUser?.email || "Me";
+}
+
+function setLocationStatus(text) {
+  const el = document.getElementById("locationStatus");
+  if (el) el.textContent = text;
+}
+
+function updateMyLocationMarker(lat, lng, accuracy) {
+  const latlng = [lat, lng];
+
+  if (!myLocationMarker) {
+    myLocationMarker = L.marker(latlng, {
+      pane: "tagPane",
+      icon: L.divIcon({
+        className: "",
+        html: `<div class="my-location-dot"></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      })
+    }).addTo(map).bindTooltip("You", {
+      permanent: false,
+      direction: "top",
+      className: "location-label"
+    });
+  } else {
+    myLocationMarker.setLatLng(latlng);
+  }
+
+  if (myAccuracyCircle) map.removeLayer(myAccuracyCircle);
+  myAccuracyCircle = L.circle(latlng, {
+    radius: accuracy || 25,
+    pane: "coveragePane",
+    color: "#1976ff",
+    weight: 1,
+    opacity: .35,
+    fillColor: "#1976ff",
+    fillOpacity: .08,
+    interactive: false
+  }).addTo(map);
+}
+
+async function saveMyLocation(lat, lng, accuracy) {
+  if (!supabaseClient || !currentUser || state.settings.shareLocation !== "on") return;
+
+  await supabaseClient.from("user_locations").upsert({
+    user_id: currentUser.id,
+    email: currentUser.email,
+    display_name: userLocationName(),
+    lat,
+    lng,
+    accuracy: accuracy || null,
+    updated_at: new Date().toISOString()
+  });
+}
+
+function handleLocation(position, centerMap = false) {
+  const { latitude, longitude, accuracy } = position.coords;
+  updateMyLocationMarker(latitude, longitude, accuracy);
+  setLocationStatus(`Location active. Accuracy: ${Math.round(accuracy || 0)}m`);
+
+  if (centerMap) map.setView([latitude, longitude], Math.max(map.getZoom(), 14));
+  saveMyLocation(latitude, longitude, accuracy);
+}
+
+function locateMe(centerMap = true) {
+  if (!navigator.geolocation) {
+    alert("Location is not supported on this device/browser.");
+    return;
+  }
+
+  setLocationStatus("Finding your location…");
+  navigator.geolocation.getCurrentPosition(
+    pos => handleLocation(pos, centerMap),
+    err => {
+      setLocationStatus("Location failed: " + err.message);
+      alert("Location failed: " + err.message);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+  );
+}
+
+function startLiveTracking() {
+  if (!navigator.geolocation) {
+    alert("Location is not supported on this device/browser.");
+    return;
+  }
+
+  if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
+
+  setLocationStatus("Live tracking active…");
+  locationWatchId = navigator.geolocation.watchPosition(
+    pos => handleLocation(pos, false),
+    err => setLocationStatus("Tracking failed: " + err.message),
+    { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 }
+  );
+}
+
+function stopLiveTracking() {
+  if (locationWatchId !== null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+  }
+  setLocationStatus("Live tracking stopped.");
+}
+
+async function loadTeamLocations() {
+  if (!supabaseClient || !currentUser) return;
+
+  const { data, error } = await supabaseClient
+    .from("user_locations")
+    .select("*")
+    .gte("updated_at", new Date(Date.now() - 1000 * 60 * 60).toISOString());
+
+  if (error) {
+    console.warn("Could not load team locations:", error.message);
+    return;
+  }
+
+  if (teamLocationLayer) {
+    map.removeLayer(teamLocationLayer);
+    teamLocationLayer = null;
+  }
+
+  teamLocationLayer = L.layerGroup();
+
+  (data || []).forEach(row => {
+    if (row.user_id === currentUser.id) return;
+    const initials = String(row.display_name || row.email || "?")
+      .trim()
+      .split(/\s+/)
+      .map(s => s[0])
+      .join("")
+      .slice(0,2)
+      .toUpperCase();
+
+    const marker = L.marker([row.lat, row.lng], {
+      pane: "tagPane",
+      icon: L.divIcon({
+        className: "",
+        html: `<div class="team-location-dot">${initials || "?"}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      })
+    }).bindTooltip(row.display_name || row.email || "Team member", {
+      permanent: false,
+      direction: "top",
+      className: "location-label"
+    });
+
+    teamLocationLayer.addLayer(marker);
+  });
+
+  teamLocationLayer.addTo(map);
+}
+
+function initLocationControls() {
+  const gpsFab = document.getElementById("gpsFab");
+  const gpsPanel = document.getElementById("gpsPanel");
+  if (gpsFab && gpsPanel) gpsFab.onclick = () => gpsPanel.classList.toggle("hidden");
+
+  const closeGpsPanelBtn = document.getElementById("closeGpsPanelBtn");
+  if (closeGpsPanelBtn) closeGpsPanelBtn.onclick = () => gpsPanel.classList.add("hidden");
+
+  const locateMeBtn = document.getElementById("locateMeBtn");
+  if (locateMeBtn) locateMeBtn.onclick = () => locateMe(true);
+
+  const followMeBtn = document.getElementById("followMeBtn");
+  if (followMeBtn) followMeBtn.onclick = startLiveTracking;
+
+  const stopFollowBtn = document.getElementById("stopFollowBtn");
+  if (stopFollowBtn) stopFollowBtn.onclick = stopLiveTracking;
+
+  const shareInput = document.getElementById("shareLocationInput");
+  if (shareInput) shareInput.value = state.settings.shareLocation || "off";
+
+  const saveLocationSettingsBtn = document.getElementById("saveLocationSettingsBtn");
+  if (saveLocationSettingsBtn) {
+    saveLocationSettingsBtn.onclick = () => {
+      state.settings.shareLocation = document.getElementById("shareLocationInput").value || "off";
+      saveLocal();
+      setLocationStatus(state.settings.shareLocation === "on"
+        ? "Location sharing on. Use Locate Me or Start Live Tracking."
+        : "Location sharing off.");
+    };
+  }
+}
+
+setInterval(() => {
+  if (currentUser) loadTeamLocations();
+}, 20000);
+
 
 // Admin permissions
 async function checkAdminStatus() {
@@ -1125,6 +1336,7 @@ async function refreshAuth() {
     await loadCloudData();
     subscribeRealtime();
     startCoverageSyncRefresh();
+    loadTeamLocations();
   }
 }
 document.getElementById("signInBtn").onclick = async () => {
@@ -1314,12 +1526,24 @@ function initControls() {
 }
 map.on("popupclose", () => { zipPopupOpen = false; });
 map.on("moveend zoomend", () => {
-  if (!shouldShowZips() && zipLayer) {
-    map.removeLayer(zipLayer);
-    zipLayer = null;
-  } else {
-    scheduleRender();
+  if (!shouldShowMapWorkLayers()) {
+    if (zipLayer) {
+      map.removeLayer(zipLayer);
+      zipLayer = null;
+    }
+    if (coverageLayer) {
+      map.removeLayer(coverageLayer);
+      coverageLayer = null;
+    }
+    if (coverageTagLayer) {
+      map.removeLayer(coverageTagLayer);
+      coverageTagLayer = null;
+    }
+    updateSelectedInfo();
+    return;
   }
+
+  scheduleRender();
   renderCoverageAreas();
 });
 initControls();
