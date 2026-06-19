@@ -94,6 +94,19 @@
         <button id="saveTimerBtn">Save Timer</button>
       </details>
 
+
+      <details>
+        <summary>Coverage Drawing</summary>
+        <div class="small">Draw a freehand filled area to show exactly where someone knocked. It saves with your user color and ages with the timer.</div>
+        <label>My drawing color</label>
+        <input id="userColorInput" type="color" value="#22c55e" />
+        <button id="saveUserColorBtn">Save My Color</button>
+        <button id="startDrawBtn">Start Freehand Drawing</button>
+        <button id="finishDrawBtn" class="secondary">Finish / Save Drawing</button>
+        <button id="cancelDrawBtn" class="danger">Cancel Drawing</button>
+        <div class="small">Tip: zoom in, tap Start, then trace the area with your finger. Tap Finish when done.</div>
+      </details>
+
       <details>
         <summary>Selected Area</summary>
         <div id="selectedInfo" class="stats">Tap a ZIP when zoomed in.</div>
@@ -105,7 +118,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=3"></script>
-  <script src="bundle.js?v=3"></script>
+  <script src="config.js?v=6"></script>
+  <script src="bundle.js?v=6"></script>
 </body>
 </html>

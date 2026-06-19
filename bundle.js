@@ -14,12 +14,14 @@ const defaultState = {
     { id: "team6", name: "Team 6", color: "#22c55e" }
   ],
   territories: {},
+  coverageAreas: {},
   settings: {
     boundaryMode: "auto",
     labelsMode: "off",
     zipZoom: 9,
     timeMode: "months",
-    threshold: 3
+    threshold: 3,
+    userColor: "#22c55e"
   }
 };
 
@@ -29,8 +31,12 @@ let isAdmin = false;
 let supabaseClient = null;
 let zipData = null;
 let zipLayer = null;
+let coverageLayer = null;
+let activeDrawingLayer = null;
 let selectedZip = null;
 let renderTimer = null;
+let isDrawing = false;
+let drawingPoints = [];
 
 const hasSupabase = Boolean(window.TM_SUPABASE_URL && window.TM_SUPABASE_ANON_KEY);
 
@@ -64,6 +70,32 @@ function mix(a,b,t) {
   const x = hexToRgb(a), y = hexToRgb(b);
   return rgbToHex(x.r+(y.r-x.r)*t, x.g+(y.g-x.g)*t, x.b+(y.b-x.b)*t);
 }
+
+function ensureCoverageState() {
+  state.coverageAreas = state.coverageAreas || {};
+  state.settings = state.settings || {};
+  state.settings.userColor = state.settings.userColor || "#22c55e";
+}
+ensureCoverageState();
+
+function coverageColor(area) {
+  const base = area.color || "#22c55e";
+  if (!area.last_worked) return base;
+  const pct = Math.max(0, Math.min(1, elapsedUnits(area.last_worked) / Number(state.settings.threshold || 3)));
+  // As the area ages, it fades toward the app green so it follows the same timer idea.
+  return mix(base, "#9DE600", pct);
+}
+
+function coverageOpacity(area) {
+  if (!area.last_worked) return 0.28;
+  const pct = Math.max(0, Math.min(1, elapsedUnits(area.last_worked) / Number(state.settings.threshold || 3)));
+  return 0.62 - (pct * 0.18);
+}
+
+function userDisplayName() {
+  return currentUser?.email || "Local user";
+}
+
 function elapsedUnits(dateStr) {
   if (!dateStr) return 0;
   const days = Math.max(0, (Date.now() - new Date(dateStr + "T00:00:00").getTime()) / 86400000);
@@ -257,10 +289,60 @@ window.clearZip = async function(zip) {
   refreshMap();
 };
 function refreshMap() {
+  ensureCoverageState();
   saveLocal();
   if (zipLayer) zipLayer.setStyle(zipStyle);
+  renderCoverageAreas();
   updateSelectedInfo();
 }
+
+function renderCoverageAreas() {
+  ensureCoverageState();
+  if (coverageLayer) {
+    map.removeLayer(coverageLayer);
+    coverageLayer = null;
+  }
+
+  const features = Object.values(state.coverageAreas || {})
+    .filter(a => a && a.geometry);
+
+  coverageLayer = L.geoJSON({
+    type: "FeatureCollection",
+    features: features.map(a => ({
+      type: "Feature",
+      properties: { id: a.id },
+      geometry: a.geometry
+    }))
+  }, {
+    renderer: canvasRenderer,
+    style: feature => {
+      const a = state.coverageAreas[feature.properties.id];
+      return {
+        color: a.color || "#22c55e",
+        weight: 2,
+        opacity: 0.95,
+        fillColor: coverageColor(a),
+        fillOpacity: coverageOpacity(a)
+      };
+    },
+    onEachFeature: (feature, layer) => {
+      const a = state.coverageAreas[feature.properties.id];
+      layer.bindPopup(`
+        <div class="coveragePopup">
+          <strong>Coverage area</strong><br>
+          By: ${a.user_email || "Unknown"}<br>
+          Date: ${a.last_worked || "Not set"}<br>
+          ZIP: ${a.zip || "Not assigned"}<br>
+          <button class="danger" onclick="deleteCoverageArea('${a.id}')">Delete Area</button>
+        </div>
+      `);
+    }
+  }).addTo(map);
+
+  if (zipLayer) zipLayer.bringToFront();
+  coverageLayer.bringToBack();
+}
+
 function updateSelectedInfo() {
   if (!selectedZip) {
     document.getElementById("selectedInfo").innerHTML = shouldShowZips()
@@ -311,6 +393,22 @@ async function loadCloudData() {
       };
     });
   }
+  const coverage = await supabaseClient.from("coverage_areas").select("*");
+  if (!coverage.error && coverage.data) {
+    state.coverageAreas = {};
+    coverage.data.forEach(a => {
+      state.coverageAreas[a.id] = {
+        id: a.id,
+        zip: a.zip,
+        user_id: a.user_id,
+        user_email: a.user_email,
+        color: a.color,
+        last_worked: a.last_worked,
+        geometry: a.geometry
+      };
+    });
+  }
+
   saveLocal();
   renderTeamsEditor();
   refreshMap();
@@ -327,6 +425,24 @@ function subscribeRealtime() {
         owner_team_id: row.owner_team_id,
         handoff_team_id: row.handoff_team_id,
         notes: row.notes || ""
+      };
+      refreshMap();
+    })
+    .subscribe();
+
+  supabaseClient.channel("coverage-area-updates")
+    .on("postgres_changes", { event:"*", schema:"public", table:"coverage_areas" }, payload => {
+      const row = payload.new || payload.old;
+      if (!row?.id) return;
+      if (payload.eventType === "DELETE") delete state.coverageAreas[row.id];
+      else state.coverageAreas[row.id] = {
+        id: row.id,
+        zip: row.zip,
+        user_id: row.user_id,
+        user_email: row.user_email,
+        color: row.color,
+        last_worked: row.last_worked,
+        geometry: row.geometry
       };
       refreshMap();
     })
@@ -353,6 +469,145 @@ async function checkAdminStatus() {
   isAdmin = !!data;
   return isAdmin;
 }
+
+async function saveCoverageArea(area) {
+  ensureCoverageState();
+  state.coverageAreas[area.id] = area;
+  saveLocal();
+
+  if (!supabaseClient || !currentUser) {
+    refreshMap();
+    return;
+  }
+
+  const { error } = await supabaseClient.from("coverage_areas").upsert({
+    id: area.id,
+    zip: area.zip || null,
+    user_id: currentUser.id,
+    user_email: currentUser.email,
+    color: area.color,
+    last_worked: area.last_worked,
+    geometry: area.geometry,
+    updated_at: new Date().toISOString()
+  });
+
+  if (error) {
+    alert("Could not save coverage area: " + error.message);
+  }
+  refreshMap();
+}
+
+window.deleteCoverageArea = async function(id) {
+  if (!state.coverageAreas[id]) return;
+  delete state.coverageAreas[id];
+
+  if (supabaseClient && currentUser) {
+    await supabaseClient.from("coverage_areas").delete().eq("id", id);
+  }
+
+  refreshMap();
+};
+
+function nearestSelectedZip() {
+  return selectedZip || null;
+}
+
+function makeCoverageId() {
+  if (window.crypto?.randomUUID) return crypto.randomUUID();
+  return "cov_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+}
+
+function startFreehandDrawing() {
+  if (!currentUser && supabaseClient) {
+    alert("Please sign in before drawing shared coverage areas.");
+    return;
+  }
+
+  isDrawing = true;
+  drawingPoints = [];
+  document.body.classList.add("drawing-active");
+  map.dragging.disable();
+  map.doubleClickZoom.disable();
+  showDrawHint("Drawing mode: drag your finger over the worked area, then tap Finish.");
+}
+
+function cancelFreehandDrawing() {
+  isDrawing = false;
+  drawingPoints = [];
+  document.body.classList.remove("drawing-active");
+  map.dragging.enable();
+  map.doubleClickZoom.enable();
+  if (activeDrawingLayer) {
+    map.removeLayer(activeDrawingLayer);
+    activeDrawingLayer = null;
+  }
+  hideDrawHint();
+}
+
+async function finishFreehandDrawing() {
+  if (!isDrawing || drawingPoints.length < 3) {
+    alert("Draw at least a small shape first.");
+    return;
+  }
+
+  const closed = [...drawingPoints, drawingPoints[0]];
+  const area = {
+    id: makeCoverageId(),
+    zip: nearestSelectedZip(),
+    user_id: currentUser?.id || "local",
+    user_email: userDisplayName(),
+    color: state.settings.userColor || "#22c55e",
+    last_worked: new Date().toISOString().slice(0,10),
+    geometry: {
+      type: "Polygon",
+      coordinates: [closed.map(p => [p.lng, p.lat])]
+    }
+  };
+
+  cancelFreehandDrawing();
+  await saveCoverageArea(area);
+}
+
+function showDrawHint(text) {
+  let el = document.getElementById("drawHint");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "drawHint";
+    el.className = "drawHint";
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+}
+
+function hideDrawHint() {
+  const el = document.getElementById("drawHint");
+  if (el) el.remove();
+}
+
+function drawPointFromEvent(e) {
+  if (!isDrawing) return;
+  const latlng = e.latlng || map.mouseEventToLatLng(e.originalEvent || e);
+  drawingPoints.push(latlng);
+
+  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
+  activeDrawingLayer = L.polygon(drawingPoints, {
+    color: state.settings.userColor || "#22c55e",
+    weight: 2,
+    fillColor: state.settings.userColor || "#22c55e",
+    fillOpacity: 0.32
+  }).addTo(map);
+}
+
+map.on("mousedown touchstart", e => {
+  if (!isDrawing) return;
+  drawingPoints = [];
+  drawPointFromEvent(e);
+});
+
+map.on("mousemove touchmove", e => {
+  if (!isDrawing) return;
+  drawPointFromEvent(e);
+});
 
 // Auth
 async function refreshAuth() {
@@ -478,7 +733,18 @@ document.getElementById("saveTimerBtn").onclick = () => {
   refreshMap();
 };
 
+document.getElementById("saveUserColorBtn").onclick = () => {
+  state.settings.userColor = document.getElementById("userColorInput").value || "#22c55e";
+  saveLocal();
+};
+
+document.getElementById("startDrawBtn").onclick = startFreehandDrawing;
+document.getElementById("finishDrawBtn").onclick = finishFreehandDrawing;
+document.getElementById("cancelDrawBtn").onclick = cancelFreehandDrawing;
+
 function initControls() {
+  ensureCoverageState();
+  document.getElementById("userColorInput").value = state.settings.userColor || "#22c55e";
   document.getElementById("zipBoundaryMode").value = state.settings.boundaryMode;
   document.getElementById("zipLabelsMode").value = state.settings.labelsMode;
   document.getElementById("zipZoomInput").value = state.settings.zipZoom;
@@ -488,5 +754,6 @@ function initControls() {
 }
 map.on("moveend zoomend", scheduleRender);
 initControls();
+renderCoverageAreas();
 refreshAuth();
 loadZipData();

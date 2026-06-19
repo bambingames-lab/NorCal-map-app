@@ -84,3 +84,30 @@ details>*:not(summary){margin-left:12px;margin-right:12px;}
 .zipQuickMenu textarea{
   min-height:70px;
 }
+
+
+/* Freehand coverage drawing */
+.drawing-active #map{
+  cursor: crosshair;
+}
+.drawHint{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:18px;
+  z-index:1400;
+  background:rgba(0,0,0,.86);
+  color:#9DE600;
+  padding:10px 14px;
+  border-radius:999px;
+  font-weight:900;
+  box-shadow:0 8px 18px rgba(0,0,0,.35);
+  pointer-events:none;
+}
+.coveragePopup{
+  min-width:200px;
+}
+.coveragePopup button{
+  width:100%;
+  margin-top:6px;
+}
