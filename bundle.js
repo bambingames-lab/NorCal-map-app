@@ -216,6 +216,30 @@ function coveragePassesFilter(area) {
   return true;
 }
 
+
+function normalizeCoverageArea(row, previous = {}) {
+  if (!row || !row.id) return null;
+
+  const userEmail = row.user_email || previous.user_email || "";
+  const fallbackTag =
+    row.user_tag ||
+    previous.user_tag ||
+    userEmail ||
+    state.settings.userTag ||
+    "Coverage";
+
+  return {
+    id: row.id,
+    zip: row.zip || previous.zip || null,
+    user_id: row.user_id || previous.user_id || null,
+    user_email: userEmail,
+    user_tag: fallbackTag,
+    color: row.color || previous.color || "#22c55e",
+    last_worked: row.last_worked || previous.last_worked || null,
+    geometry: row.geometry || previous.geometry
+  };
+}
+
 function elapsedUnits(dateStr) {
   if (!dateStr) return 0;
   const days = Math.max(0, (Date.now() - new Date(dateStr + "T00:00:00").getTime()) / 86400000);
@@ -599,16 +623,8 @@ async function loadCloudData() {
     state.coverageAreas = state.coverageAreas || {};
     coverage.data.forEach(a => {
       if (!a || !a.id || !a.geometry) return;
-      state.coverageAreas[a.id] = {
-        id: a.id,
-        zip: a.zip,
-        user_id: a.user_id,
-        user_email: a.user_email,
-        user_tag: a.user_tag || a.user_email || "",
-        color: a.color,
-        last_worked: a.last_worked,
-        geometry: a.geometry
-      };
+      const normalized = normalizeCoverageArea(a, state.coverageAreas[a.id] || {});
+      if (normalized) state.coverageAreas[a.id] = normalized;
     });
   } else if (coverage.error) {
     console.warn("Coverage load failed:", coverage.error.message);
@@ -640,16 +656,10 @@ function subscribeRealtime() {
       const row = payload.new || payload.old;
       if (!row?.id) return;
       if (payload.eventType === "DELETE") delete state.coverageAreas[row.id];
-      else state.coverageAreas[row.id] = {
-        id: row.id,
-        zip: row.zip,
-        user_id: row.user_id,
-        user_email: row.user_email,
-        user_tag: row.user_tag || "",
-        color: row.color,
-        last_worked: row.last_worked,
-        geometry: row.geometry
-      };
+      else {
+        const normalized = normalizeCoverageArea(row, state.coverageAreas[row.id] || {});
+        if (normalized) state.coverageAreas[row.id] = normalized;
+      }
       refreshMap();
     })
     .subscribe();
@@ -690,9 +700,18 @@ async function checkAdminStatus() {
 
 async function saveCoverageArea(area) {
   ensureCoverageState();
-  if (!area.user_tag) area.user_tag = state.settings.userTag || userDisplayName();
-  if (!area.color) area.color = state.settings.userColor || "#22c55e";
-  state.coverageAreas[area.id] = area;
+
+  const previous = state.coverageAreas[area.id] || {};
+  const normalized = normalizeCoverageArea(area, previous);
+
+  if (!normalized.user_tag) normalized.user_tag = state.settings.userTag || userDisplayName();
+  if (!normalized.color) normalized.color = state.settings.userColor || "#22c55e";
+
+  // Preserve the original creator when editing someone else's drawing.
+  normalized.user_id = normalized.user_id || currentUser?.id || "local";
+  normalized.user_email = normalized.user_email || currentUser?.email || userDisplayName();
+
+  state.coverageAreas[normalized.id] = normalized;
   saveLocal();
 
   if (!supabaseClient || !currentUser) {
@@ -701,20 +720,21 @@ async function saveCoverageArea(area) {
   }
 
   const { error } = await supabaseClient.from("coverage_areas").upsert({
-    id: area.id,
-    zip: area.zip || null,
-    user_id: currentUser.id,
-    user_email: currentUser.email,
-    user_tag: area.user_tag || state.settings.userTag || currentUser.email,
-    color: area.color,
-    last_worked: area.last_worked,
-    geometry: area.geometry,
+    id: normalized.id,
+    zip: normalized.zip || null,
+    user_id: normalized.user_id === "local" ? currentUser.id : normalized.user_id,
+    user_email: normalized.user_email || currentUser.email,
+    user_tag: normalized.user_tag || normalized.user_email || state.settings.userTag || currentUser.email,
+    color: normalized.color,
+    last_worked: normalized.last_worked,
+    geometry: normalized.geometry,
     updated_at: new Date().toISOString()
   });
 
   if (error) {
     alert("Could not save coverage area: " + error.message);
   }
+
   refreshMap();
 }
 
@@ -738,7 +758,8 @@ window.saveCoverageDetails = async function(id) {
   const colorEl = document.getElementById("coverageColor_" + id);
   const dateEl = document.getElementById("coverageDate_" + id);
 
-  area.user_tag = tagEl ? tagEl.value.trim() : area.user_tag;
+  const newTag = tagEl ? tagEl.value.trim() : area.user_tag;
+  area.user_tag = newTag || area.user_tag || area.user_email || "Coverage";
   area.color = colorEl ? colorEl.value : area.color;
   area.last_worked = dateEl && dateEl.value ? dateEl.value : area.last_worked;
 
@@ -821,8 +842,8 @@ async function finishFreehandDrawing() {
     id: editingCoverageId || makeCoverageId(),
     zip: existing?.zip || nearestSelectedZip(),
     user_id: existing?.user_id || currentUser?.id || "local",
-    user_email: existing?.user_email || userDisplayName(),
-    user_tag: existing?.user_tag || state.settings.userTag || userDisplayName(),
+    user_email: existing?.user_email || currentUser?.email || userDisplayName(),
+    user_tag: existing?.user_tag || state.settings.userTag || currentUser?.email || userDisplayName(),
     color: existing?.color || state.settings.userColor || "#22c55e",
     last_worked: existing?.last_worked || new Date().toISOString().slice(0,10),
     geometry: {
