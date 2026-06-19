@@ -37,6 +37,7 @@ let selectedZip = null;
 let renderTimer = null;
 let isDrawing = false;
 let drawingPoints = [];
+let editingCoverageId = null;
 
 const hasSupabase = Boolean(window.TM_SUPABASE_URL && window.TM_SUPABASE_ANON_KEY);
 
@@ -333,6 +334,15 @@ function renderCoverageAreas() {
           By: ${a.user_email || "Unknown"}<br>
           Date: ${a.last_worked || "Not set"}<br>
           ZIP: ${a.zip || "Not assigned"}<br>
+
+          <label>Area color</label>
+          <input id="coverageColor_${a.id}" type="color" value="${a.color || "#22c55e"}">
+
+          <label>Worked date</label>
+          <input id="coverageDate_${a.id}" type="date" value="${a.last_worked || ""}">
+
+          <button class="secondary" onclick="saveCoverageDetails('${a.id}')">Save Area Details</button>
+          <button onclick="startEditCoverageArea('${a.id}')">Redraw / Edit Shape</button>
           <button class="danger" onclick="deleteCoverageArea('${a.id}')">Delete Area</button>
         </div>
       `);
@@ -508,6 +518,37 @@ window.deleteCoverageArea = async function(id) {
   refreshMap();
 };
 
+window.saveCoverageDetails = async function(id) {
+  const area = state.coverageAreas[id];
+  if (!area) return;
+
+  const colorEl = document.getElementById("coverageColor_" + id);
+  const dateEl = document.getElementById("coverageDate_" + id);
+
+  area.color = colorEl ? colorEl.value : area.color;
+  area.last_worked = dateEl && dateEl.value ? dateEl.value : area.last_worked;
+
+  await saveCoverageArea(area);
+  map.closePopup();
+};
+
+window.startEditCoverageArea = function(id) {
+  const area = state.coverageAreas[id];
+  if (!area) return;
+
+  editingCoverageId = id;
+
+  if (activeDrawingLayer) {
+    map.removeLayer(activeDrawingLayer);
+    activeDrawingLayer = null;
+  }
+
+  startFreehandDrawing();
+  showDrawHint("Editing area: redraw the shape, then tap Finish.");
+  map.closePopup();
+};
+
+
 function nearestSelectedZip() {
   return selectedZip || null;
 }
@@ -528,11 +569,12 @@ function startFreehandDrawing() {
   document.body.classList.add("drawing-active");
   map.dragging.disable();
   map.doubleClickZoom.disable();
-  showDrawHint("Drawing mode: drag your finger over the worked area, then tap Finish.");
+  showDrawHint("Drawing mode: drag your finger over the worked area, then tap Finish. Everyone can see and edit saved drawings.");
 }
 
 function cancelFreehandDrawing() {
   isDrawing = false;
+  editingCoverageId = null;
   drawingPoints = [];
   document.body.classList.remove("drawing-active");
   map.dragging.enable();
@@ -551,19 +593,22 @@ async function finishFreehandDrawing() {
   }
 
   const closed = [...drawingPoints, drawingPoints[0]];
+  const existing = editingCoverageId ? state.coverageAreas[editingCoverageId] : null;
+
   const area = {
-    id: makeCoverageId(),
-    zip: nearestSelectedZip(),
-    user_id: currentUser?.id || "local",
-    user_email: userDisplayName(),
-    color: state.settings.userColor || "#22c55e",
-    last_worked: new Date().toISOString().slice(0,10),
+    id: editingCoverageId || makeCoverageId(),
+    zip: existing?.zip || nearestSelectedZip(),
+    user_id: existing?.user_id || currentUser?.id || "local",
+    user_email: existing?.user_email || userDisplayName(),
+    color: existing?.color || state.settings.userColor || "#22c55e",
+    last_worked: existing?.last_worked || new Date().toISOString().slice(0,10),
     geometry: {
       type: "Polygon",
       coordinates: [closed.map(p => [p.lng, p.lat])]
     }
   };
 
+  editingCoverageId = null;
   cancelFreehandDrawing();
   await saveCoverageArea(area);
 }
