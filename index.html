@@ -62,6 +62,21 @@
       <button id="applyTeamCountBtn">Apply Team Count</button>
       <div id="teamsEditor"></div>
       <button id="saveTeamsBtn">Save Teams</button>
+
+      <div class="adminTimerBox">
+        <h3>Timer Settings</h3>
+        <label>Timer unit</label>
+        <select id="timeMode">
+          <option value="months">Months</option>
+          <option value="weeks">Weeks</option>
+          <option value="days">Days</option>
+        </select>
+        <label>Ready again after</label>
+        <input id="thresholdInput" type="number" min="1" max="365" value="3" />
+        <button id="saveTimerBtn" class="secondary">Save Timer Settings</button>
+        <div class="small">Admin only: this controls ZIP gradients and freehand drawing fade.</div>
+      </div>
+
       <div class="small">Teams are stored locally until Supabase is configured. With Supabase, all users see the same teams.</div>
     </div>
   </div>
@@ -89,19 +104,6 @@
         <label>Full ZIP detail starts at zoom</label>
         <input id="zipZoomInput" type="number" min="5" max="14" value="9" />
         <button id="applyPerfBtn">Apply Performance Settings</button>
-      </details>
-
-      <details>
-        <summary>Timer</summary>
-        <label>Timer unit</label>
-        <select id="timeMode">
-          <option value="months">Months</option>
-          <option value="weeks">Weeks</option>
-          <option value="days">Days</option>
-        </select>
-        <label>Ready again after</label>
-        <input id="thresholdInput" type="number" min="1" max="24" value="3" />
-        <button id="saveTimerBtn">Save Timer</button>
       </details>
 
 
@@ -162,7 +164,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=9"></script>
-  <script src="bundle.js?v=9"></script>
+  <script src="config.js?v=10"></script>
+  <script src="bundle.js?v=10"></script>
 </body>
 </html>

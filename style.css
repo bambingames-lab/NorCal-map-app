@@ -206,3 +206,16 @@ body.drawing-active .leaflet-map-pane{
   touch-action:none!important;
   -ms-touch-action:none!important;
 }
+
+
+.adminTimerBox{
+  border:1px solid #e7f1e8;
+  border-radius:14px;
+  padding:10px;
+  margin-top:12px;
+  background:#faffef;
+}
+.adminTimerBox h3{
+  margin:0 0 8px;
+  font-size:15px;
+}

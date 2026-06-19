@@ -90,8 +90,8 @@ function coverageColor(area) {
   const base = area.color || "#22c55e";
   if (!area.last_worked) return base;
   const pct = Math.max(0, Math.min(1, elapsedUnits(area.last_worked) / Number(state.settings.threshold || 3)));
-  // As the area ages, it fades toward the app green so it follows the same timer idea.
-  return mix(base, "#9DE600", pct);
+  // As the area ages, it fades toward black using the same timer as ZIPs.
+  return mix(base, "#000000", pct);
 }
 
 function coverageOpacity(area) {
@@ -119,6 +119,22 @@ async function saveUserProfile() {
 
   syncProfileInputs();
 
+  // Make existing drawings by this account match the account settings.
+  state.coverageAreas = state.coverageAreas || {};
+  Object.values(state.coverageAreas).forEach(area => {
+    if (!area) return;
+    const belongsToUser = currentUser
+      ? (area.user_id === currentUser.id || area.user_email === currentUser.email)
+      : (area.user_email === state.settings.userTag || area.user_tag === state.settings.userTag);
+    if (belongsToUser) {
+      area.user_tag = state.settings.userTag;
+      area.color = state.settings.userColor;
+      area.user_email = currentUser?.email || area.user_email || state.settings.userTag;
+    }
+  });
+  saveLocal();
+  renderCoverageAreas();
+
   if (supabaseClient && currentUser) {
     await supabaseClient.from("user_profiles").upsert({
       user_id: currentUser.id,
@@ -127,9 +143,18 @@ async function saveUserProfile() {
       color: state.settings.userColor,
       updated_at: new Date().toISOString()
     });
+
+    await supabaseClient
+      .from("coverage_areas")
+      .update({
+        user_tag: state.settings.userTag,
+        color: state.settings.userColor,
+        updated_at: new Date().toISOString()
+      })
+      .eq("user_id", currentUser.id);
   }
 
-  alert("Profile saved.");
+  alert("Profile saved. Your existing drawings now match this name/color.");
 }
 
 function syncProfileInputs() {
@@ -494,6 +519,12 @@ async function loadCloudData() {
   if (!teams.error && teams.data?.length) {
     state.teams = teams.data.map(t => ({ id:t.id, name:t.name, color:t.color }));
   }
+  const appSettings = await supabaseClient.from("app_settings").select("*").eq("id", "global").maybeSingle();
+  if (!appSettings.error && appSettings.data) {
+    state.settings.timeMode = appSettings.data.time_mode || state.settings.timeMode || "months";
+    state.settings.threshold = Number(appSettings.data.threshold || state.settings.threshold || 3);
+  }
+
   const territories = await supabaseClient.from("territories").select("*");
   if (!territories.error && territories.data) {
     state.territories = {};
@@ -508,19 +539,23 @@ async function loadCloudData() {
   }
   const coverage = await supabaseClient.from("coverage_areas").select("*");
   if (!coverage.error && coverage.data) {
-    state.coverageAreas = {};
+    // Merge cloud drawings instead of wiping local first, so drawings do not vanish on reload if one fetch fails.
+    state.coverageAreas = state.coverageAreas || {};
     coverage.data.forEach(a => {
+      if (!a || !a.id || !a.geometry) return;
       state.coverageAreas[a.id] = {
         id: a.id,
         zip: a.zip,
         user_id: a.user_id,
         user_email: a.user_email,
-        user_tag: a.user_tag || "",
+        user_tag: a.user_tag || a.user_email || "",
         color: a.color,
         last_worked: a.last_worked,
         geometry: a.geometry
       };
     });
+  } else if (coverage.error) {
+    console.warn("Coverage load failed:", coverage.error.message);
   }
 
   saveLocal();
@@ -562,6 +597,18 @@ function subscribeRealtime() {
       refreshMap();
     })
     .subscribe();
+
+  supabaseClient.channel("app-settings-updates")
+    .on("postgres_changes", { event:"*", schema:"public", table:"app_settings" }, payload => {
+      const row = payload.new;
+      if (!row || row.id !== "global") return;
+      state.settings.timeMode = row.time_mode || state.settings.timeMode;
+      state.settings.threshold = Number(row.threshold || state.settings.threshold || 3);
+      saveLocal();
+      initControls();
+      refreshMap();
+    })
+    .subscribe();
 }
 
 // Admin permissions
@@ -587,6 +634,8 @@ async function checkAdminStatus() {
 
 async function saveCoverageArea(area) {
   ensureCoverageState();
+  if (!area.user_tag) area.user_tag = state.settings.userTag || userDisplayName();
+  if (!area.color) area.color = state.settings.userColor || "#22c55e";
   state.coverageAreas[area.id] = area;
   saveLocal();
 
@@ -943,11 +992,27 @@ document.getElementById("applyPerfBtn").onclick = () => {
   scheduleRender();
   updateSelectedInfo();
 };
-document.getElementById("saveTimerBtn").onclick = () => {
+document.getElementById("saveTimerBtn").onclick = async () => {
+  if (!isAdmin) {
+    alert("Only the admin can change timer settings.");
+    return;
+  }
+
   state.settings.timeMode = document.getElementById("timeMode").value;
   state.settings.threshold = Number(document.getElementById("thresholdInput").value || 3);
   saveLocal();
   refreshMap();
+
+  if (supabaseClient && currentUser) {
+    const { error } = await supabaseClient.from("app_settings").upsert({
+      id: "global",
+      time_mode: state.settings.timeMode,
+      threshold: state.settings.threshold,
+      updated_by: currentUser.id,
+      updated_at: new Date().toISOString()
+    });
+    if (error) alert("Could not save timer settings: " + error.message);
+  }
 };
 
 if (document.getElementById("saveUserColorBtn")) document.getElementById("saveUserColorBtn").onclick = () => {
