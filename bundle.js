@@ -45,6 +45,7 @@ let myLocationMarker = null;
 let myAccuracyCircle = null;
 let locationWatchId = null;
 let teamLocationLayer = null;
+let teamLocationRefreshTimer = null;
 let selectedZip = null;
 let selectedCoverageId = null;
 let renderTimer = null;
@@ -774,12 +775,6 @@ initLocationControls();
       refreshMap();
     })
     .subscribe();
-
-  supabaseClient.channel("user-location-updates")
-    .on("postgres_changes", { event:"*", schema:"public", table:"user_locations" }, () => {
-      loadTeamLocations();
-    })
-    .subscribe();
 }
 
 function startCoverageSyncRefresh() {
@@ -794,9 +789,10 @@ function startCoverageSyncRefresh() {
 }
 
 
-// Location services
-function userLocationName() {
-  return state.settings.userTag || currentUser?.email || "Me";
+
+// Safe Location Services
+function locationDisplayName() {
+  return state?.settings?.userTag || currentUser?.email || "Me";
 }
 
 function setLocationStatus(text) {
@@ -804,19 +800,24 @@ function setLocationStatus(text) {
   if (el) el.textContent = text;
 }
 
+function locationPaneName() {
+  return map.getPane("tagPane") ? "tagPane" : "markerPane";
+}
+
 function updateMyLocationMarker(lat, lng, accuracy) {
   const latlng = [lat, lng];
 
   if (!myLocationMarker) {
     myLocationMarker = L.marker(latlng, {
-      pane: "tagPane",
+      pane: locationPaneName(),
       icon: L.divIcon({
         className: "",
-        html: `<div class="my-location-dot"></div>`,
+        html: '<div class="my-location-dot"></div>',
         iconSize: [24, 24],
         iconAnchor: [12, 12]
       })
-    }).addTo(map).bindTooltip("You", {
+    }).addTo(map);
+    myLocationMarker.bindTooltip("You", {
       permanent: false,
       direction: "top",
       className: "location-label"
@@ -825,51 +826,59 @@ function updateMyLocationMarker(lat, lng, accuracy) {
     myLocationMarker.setLatLng(latlng);
   }
 
-  if (myAccuracyCircle) map.removeLayer(myAccuracyCircle);
+  if (myAccuracyCircle) {
+    try { map.removeLayer(myAccuracyCircle); } catch {}
+  }
+
   myAccuracyCircle = L.circle(latlng, {
     radius: accuracy || 25,
-    pane: "coveragePane",
     color: "#1976ff",
     weight: 1,
-    opacity: .35,
+    opacity: 0.35,
     fillColor: "#1976ff",
-    fillOpacity: .08,
+    fillOpacity: 0.08,
     interactive: false
   }).addTo(map);
 }
 
-async function saveMyLocation(lat, lng, accuracy) {
-  if (!supabaseClient || !currentUser || state.settings.shareLocation !== "on") return;
+async function saveMyLocationToCloud(lat, lng, accuracy) {
+  if (!supabaseClient || !currentUser) return;
+  if ((state.settings.shareLocation || "off") !== "on") return;
 
-  await supabaseClient.from("user_locations").upsert({
+  const { error } = await supabaseClient.from("user_locations").upsert({
     user_id: currentUser.id,
     email: currentUser.email,
-    display_name: userLocationName(),
+    display_name: locationDisplayName(),
     lat,
     lng,
     accuracy: accuracy || null,
     updated_at: new Date().toISOString()
   });
+
+  if (error) console.warn("Location save failed:", error.message);
 }
 
-function handleLocation(position, centerMap = false) {
+function handleLocationPosition(position, shouldCenter) {
   const { latitude, longitude, accuracy } = position.coords;
   updateMyLocationMarker(latitude, longitude, accuracy);
-  setLocationStatus(`Location active. Accuracy: ${Math.round(accuracy || 0)}m`);
+  setLocationStatus("Location active. Accuracy: " + Math.round(accuracy || 0) + "m");
 
-  if (centerMap) map.setView([latitude, longitude], Math.max(map.getZoom(), 14));
-  saveMyLocation(latitude, longitude, accuracy);
+  if (shouldCenter) {
+    map.setView([latitude, longitude], Math.max(map.getZoom(), 14));
+  }
+
+  saveMyLocationToCloud(latitude, longitude, accuracy);
 }
 
-function locateMe(centerMap = true) {
+function locateMe(shouldCenter = true) {
   if (!navigator.geolocation) {
-    alert("Location is not supported on this device/browser.");
+    alert("Location is not supported on this device.");
     return;
   }
 
-  setLocationStatus("Finding your location…");
+  setLocationStatus("Finding your location...");
   navigator.geolocation.getCurrentPosition(
-    pos => handleLocation(pos, centerMap),
+    pos => handleLocationPosition(pos, shouldCenter),
     err => {
       setLocationStatus("Location failed: " + err.message);
       alert("Location failed: " + err.message);
@@ -880,15 +889,17 @@ function locateMe(centerMap = true) {
 
 function startLiveTracking() {
   if (!navigator.geolocation) {
-    alert("Location is not supported on this device/browser.");
+    alert("Location is not supported on this device.");
     return;
   }
 
-  if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
+  if (locationWatchId !== null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+  }
 
-  setLocationStatus("Live tracking active…");
+  setLocationStatus("Live tracking active...");
   locationWatchId = navigator.geolocation.watchPosition(
-    pos => handleLocation(pos, false),
+    pos => handleLocationPosition(pos, false),
     err => setLocationStatus("Tracking failed: " + err.message),
     { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 }
   );
@@ -911,36 +922,32 @@ async function loadTeamLocations() {
     .gte("updated_at", new Date(Date.now() - 1000 * 60 * 60).toISOString());
 
   if (error) {
-    console.warn("Could not load team locations:", error.message);
+    console.warn("Team location load failed:", error.message);
     return;
   }
 
   if (teamLocationLayer) {
-    map.removeLayer(teamLocationLayer);
-    teamLocationLayer = null;
+    try { map.removeLayer(teamLocationLayer); } catch {}
   }
 
   teamLocationLayer = L.layerGroup();
 
   (data || []).forEach(row => {
+    if (!row.lat || !row.lng) return;
     if (row.user_id === currentUser.id) return;
-    const initials = String(row.display_name || row.email || "?")
-      .trim()
-      .split(/\s+/)
-      .map(s => s[0])
-      .join("")
-      .slice(0,2)
-      .toUpperCase();
+
+    const name = row.display_name || row.email || "User";
+    const initials = String(name).trim().split(/\s+/).map(s => s[0]).join("").slice(0,2).toUpperCase();
 
     const marker = L.marker([row.lat, row.lng], {
-      pane: "tagPane",
+      pane: locationPaneName(),
       icon: L.divIcon({
         className: "",
-        html: `<div class="team-location-dot">${initials || "?"}</div>`,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
+        html: '<div class="team-location-dot">' + (initials || "?") + '</div>',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
       })
-    }).bindTooltip(row.display_name || row.email || "Team member", {
+    }).bindTooltip(name, {
       permanent: false,
       direction: "top",
       className: "location-label"
@@ -952,41 +959,42 @@ async function loadTeamLocations() {
   teamLocationLayer.addTo(map);
 }
 
+function startTeamLocationRefresh() {
+  if (teamLocationRefreshTimer) clearInterval(teamLocationRefreshTimer);
+  if (!supabaseClient || !currentUser) return;
+  loadTeamLocations();
+  teamLocationRefreshTimer = setInterval(() => {
+    if (!document.hidden && currentUser) loadTeamLocations();
+  }, 20000);
+}
+
 function initLocationControls() {
   const gpsFab = document.getElementById("gpsFab");
   const gpsPanel = document.getElementById("gpsPanel");
-  if (gpsFab && gpsPanel) gpsFab.onclick = () => gpsPanel.classList.toggle("hidden");
-
-  const closeGpsPanelBtn = document.getElementById("closeGpsPanelBtn");
-  if (closeGpsPanelBtn) closeGpsPanelBtn.onclick = () => gpsPanel.classList.add("hidden");
-
-  const locateMeBtn = document.getElementById("locateMeBtn");
-  if (locateMeBtn) locateMeBtn.onclick = () => locateMe(true);
-
-  const followMeBtn = document.getElementById("followMeBtn");
-  if (followMeBtn) followMeBtn.onclick = startLiveTracking;
-
-  const stopFollowBtn = document.getElementById("stopFollowBtn");
-  if (stopFollowBtn) stopFollowBtn.onclick = stopLiveTracking;
-
+  const closeBtn = document.getElementById("closeGpsPanelBtn");
+  const locateBtn = document.getElementById("locateMeBtn");
+  const followBtn = document.getElementById("followMeBtn");
+  const stopBtn = document.getElementById("stopFollowBtn");
   const shareInput = document.getElementById("shareLocationInput");
-  if (shareInput) shareInput.value = state.settings.shareLocation || "off";
+  const saveBtn = document.getElementById("saveLocationSettingsBtn");
 
-  const saveLocationSettingsBtn = document.getElementById("saveLocationSettingsBtn");
-  if (saveLocationSettingsBtn) {
-    saveLocationSettingsBtn.onclick = () => {
-      state.settings.shareLocation = document.getElementById("shareLocationInput").value || "off";
+  if (shareInput) shareInput.value = state.settings.shareLocation || "off";
+  if (gpsFab && gpsPanel) gpsFab.onclick = () => gpsPanel.classList.toggle("hidden");
+  if (closeBtn && gpsPanel) closeBtn.onclick = () => gpsPanel.classList.add("hidden");
+  if (locateBtn) locateBtn.onclick = () => locateMe(true);
+  if (followBtn) followBtn.onclick = startLiveTracking;
+  if (stopBtn) stopBtn.onclick = stopLiveTracking;
+
+  if (saveBtn) {
+    saveBtn.onclick = () => {
+      state.settings.shareLocation = shareInput ? shareInput.value : "off";
       saveLocal();
       setLocationStatus(state.settings.shareLocation === "on"
-        ? "Location sharing on. Use Locate Me or Start Live Tracking."
+        ? "Location sharing on. Tap Locate Me or Start Live Tracking."
         : "Location sharing off.");
     };
   }
 }
-
-setInterval(() => {
-  if (currentUser) loadTeamLocations();
-}, 20000);
 
 
 // Admin permissions
@@ -1335,8 +1343,8 @@ async function refreshAuth() {
   if (currentUser) {
     await loadCloudData();
     subscribeRealtime();
+    startTeamLocationRefresh();
     startCoverageSyncRefresh();
-    loadTeamLocations();
   }
 }
 document.getElementById("signInBtn").onclick = async () => {

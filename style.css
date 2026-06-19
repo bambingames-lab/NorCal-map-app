@@ -465,7 +465,7 @@ body.drawing-active .drawFab{
 }
 
 
-/* Location services */
+/* Safe Location Services */
 .gpsFab{
   position:fixed!important;
   right:18px!important;
@@ -480,7 +480,6 @@ body.drawing-active .drawFab{
   font-size:30px;
   font-weight:900;
   box-shadow:0 10px 24px rgba(0,0,0,.35);
-  touch-action:none;
 }
 .gpsPanel{
   position:fixed!important;
@@ -489,9 +488,6 @@ body.drawing-active .drawFab{
   z-index:6500!important;
   width:290px;
   max-width:calc(100vw - 28px);
-  max-height:calc(100dvh - 180px);
-  overflow-y:auto;
-  -webkit-overflow-scrolling:touch;
   background:#fff;
   border:1px solid #cde7a5;
   border-radius:18px;
@@ -504,11 +500,11 @@ body.drawing-active .drawFab{
   border-radius:999px;
   background:#1976ff;
   border:3px solid white;
-  box-shadow:0 0 0 5px rgba(25,118,255,.22), 0 3px 12px rgba(0,0,0,.35);
+  box-shadow:0 0 0 5px rgba(25,118,255,.25), 0 3px 12px rgba(0,0,0,.35);
 }
 .team-location-dot{
-  min-width:22px;
-  height:22px;
+  min-width:24px;
+  height:24px;
   border-radius:999px;
   border:2px solid #000;
   background:#9DE600;
