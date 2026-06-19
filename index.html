@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Territory Manager Community</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#9DE600" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">Territory Manager</div>
+    <button id="loginBtn" class="topBtn">Login</button>
+    <button id="adminBtn" class="topBtn hidden">Admin</button>
+    <button id="menuBtn" class="topBtn">Menu</button>
+  </div>
+
+  <div id="authPanel" class="panel left hidden">
+    <div class="panelHeader">
+      <button id="closeAuthBtn" class="closeBtn">Close</button>
+      <h2>Login</h2>
+    </div>
+    <div class="panelBody">
+      <label>Email</label>
+      <input id="emailInput" type="email" placeholder="name@email.com" />
+      <label>Password</label>
+      <input id="passwordInput" type="password" placeholder="Password" />
+      <button id="signInBtn">Sign In</button>
+      <button id="signUpBtn" class="secondary">Create Account</button>
+      <button id="signOutBtn" class="danger hidden">Sign Out</button>
+      <div id="authStatus" class="small"></div>
+    </div>
+  </div>
+
+  <div id="adminPanel" class="panel left hidden">
+    <div class="panelHeader">
+      <button id="closeAdminBtn" class="closeBtn">Close</button>
+      <h2>Admin Teams</h2>
+    </div>
+    <div class="panelBody">
+      <label>Number of teams</label>
+      <input id="teamCountInput" type="number" min="1" max="12" value="6" />
+      <button id="applyTeamCountBtn">Apply Team Count</button>
+      <div id="teamsEditor"></div>
+      <button id="saveTeamsBtn">Save Teams</button>
+      <div class="small">Teams are stored locally until Supabase is configured. With Supabase, all users see the same teams.</div>
+    </div>
+  </div>
+
+  <div id="menuPanel" class="panel right hidden">
+    <div class="panelHeader">
+      <button id="closeMenuBtn" class="closeBtn">Close</button>
+      <h2>Menu</h2>
+    </div>
+    <div class="panelBody">
+      <details open>
+        <summary>Performance</summary>
+        <label>ZIP boundaries</label>
+        <select id="zipBoundaryMode">
+          <option value="auto">Auto: show only when zoomed in</option>
+          <option value="off">Off</option>
+          <option value="on">Always on</option>
+        </select>
+        <label>Show ZIP labels</label>
+        <select id="zipLabelsMode">
+          <option value="off">Off</option>
+          <option value="auto">Auto when close</option>
+          <option value="on">On</option>
+        </select>
+        <label>Full ZIP detail starts at zoom</label>
+        <input id="zipZoomInput" type="number" min="5" max="14" value="9" />
+        <button id="applyPerfBtn">Apply Performance Settings</button>
+      </details>
+
+      <details>
+        <summary>Timer</summary>
+        <label>Timer unit</label>
+        <select id="timeMode">
+          <option value="months">Months</option>
+          <option value="weeks">Weeks</option>
+          <option value="days">Days</option>
+        </select>
+        <label>Ready again after</label>
+        <input id="thresholdInput" type="number" min="1" max="24" value="3" />
+        <button id="saveTimerBtn">Save Timer</button>
+      </details>
+
+      <details>
+        <summary>Selected Area</summary>
+        <div id="selectedInfo" class="stats">Tap a ZIP when zoomed in.</div>
+      </details>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="bundle.js"></script>
+</body>
+</html>

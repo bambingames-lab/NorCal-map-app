@@ -1,0 +1,35 @@
+:root{
+  --green:#9DE600;
+  --greenDark:#78b800;
+  --black:#000;
+  --panel:#fff;
+  --text:#000;
+  --shadow:0 12px 30px rgba(0,0,0,.25);
+}
+html,body{height:100%;margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#000;color:#000;}
+#map{position:absolute;top:64px;bottom:0;left:0;right:0;background:#000;}
+.topbar{position:absolute;top:0;left:0;right:0;height:64px;z-index:1200;background:var(--green);display:flex;align-items:center;gap:10px;padding:0 12px;box-shadow:var(--shadow);}
+.brand{font-weight:900;font-size:19px;flex:1;color:#000;}
+.topBtn,.closeBtn,button{border:0;border-radius:12px;background:#000;color:var(--green);font-weight:800;padding:10px 13px;}
+button.secondary{background:#eef8d1;color:#000;}
+button.danger{background:#e34b4b;color:#fff;}
+.hidden{display:none!important;}
+.panel{position:absolute;top:76px;z-index:1300;width:330px;max-width:calc(100vw - 24px);max-height:calc(100vh - 88px);overflow:auto;background:#fff;border:1px solid #cde7a5;border-radius:18px;box-shadow:var(--shadow);}
+.panel.left{left:12px;}
+.panel.right{right:12px;}
+.panelHeader{position:sticky;top:0;background:#fff;border-bottom:1px solid #e8f2d8;display:flex;align-items:center;gap:10px;padding:12px;}
+.panelHeader h2{margin:0;font-size:18px;flex:1;}
+.panelBody{padding:12px;}
+label{display:block;font-weight:800;font-size:12px;margin:10px 0 5px;}
+input,select,textarea{width:100%;box-sizing:border-box;border:1px solid #cde7a5;border-radius:12px;padding:11px;background:#fff;color:#000;font-size:14px;}
+textarea{min-height:90px;resize:vertical;}
+.small{font-size:12px;line-height:1.35;margin-top:8px;color:#333;}
+.stats{font-size:13px;line-height:1.45;background:#f5ffd8;border:1px solid #dbeedc;border-radius:12px;padding:10px;}
+details{border:1px solid #e7f1e8;border-radius:14px;margin:12px 0;background:#fff;overflow:hidden;}
+summary{font-weight:900;padding:14px;cursor:pointer;background:#fff;}
+details>*:not(summary){margin-left:12px;margin-right:12px;}
+.leaflet-top.leaflet-left{top:72px;}
+.zip-label{background:rgba(255,255,255,.9);border:1px solid #d5e7d8;border-radius:6px;color:#000;font-size:9px;font-weight:800;padding:1px 4px;}
+.popup button,.leaflet-popup-content button{width:100%;margin-top:6px;}
+.teamRow{display:grid;grid-template-columns:1fr 54px;gap:8px;align-items:center;margin-top:10px;}
+.teamRow input[type=color]{height:42px;padding:3px;}
