@@ -16,9 +16,9 @@ const defaultState = {
   territories: {},
   coverageAreas: {},
   settings: {
-    boundaryMode: "auto",
+    boundaryMode: "on",
     labelsMode: "off",
-    zipZoom: 9,
+    zipZoom: 6,
     timeMode: "months",
     threshold: 3,
     userColor: "#22c55e",
@@ -59,6 +59,16 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 function saveLocal() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
+
+function ensureZipLineSettings() {
+  state.settings = state.settings || {};
+  // Re-implement ZIP lines as visible by default. Existing old cached settings may have hidden them.
+  if (!state.settings.boundaryMode || state.settings.boundaryMode === "off") state.settings.boundaryMode = "on";
+  if (!state.settings.zipZoom || Number(state.settings.zipZoom) > 8) state.settings.zipZoom = 6;
+  if (!state.settings.labelsMode) state.settings.labelsMode = "off";
+}
+ensureZipLineSettings();
+
 
 function teamById(id) {
   return state.teams.find(t => t.id === id) || state.teams[0];
@@ -267,20 +277,21 @@ function featureInBounds(feature, bounds) {
   }
 }
 function shouldShowZips() {
+  ensureZipLineSettings();
   if (state.settings.boundaryMode === "off") return false;
   if (state.settings.boundaryMode === "on") return true;
-  return map.getZoom() >= Number(state.settings.zipZoom || 9);
+  return map.getZoom() >= Number(state.settings.zipZoom || 6);
 }
 function zipStyle(feature) {
   const zip = zipCode(feature);
   const zoom = map.getZoom();
   const selected = selectedZip === zip;
-  let weight = zoom <= 7 ? 0.35 : zoom <= 8 ? 0.65 : zoom <= 9 ? 1.1 : 1.8;
+  let weight = zoom <= 6 ? 0.75 : zoom <= 8 ? 1.05 : zoom <= 10 ? 1.35 : 1.9;
   return {
     renderer: canvasRenderer,
-    color: selected ? "#2563eb" : "#111",
-    weight: selected ? weight + 1.2 : weight,
-    opacity: 0.95,
+    color: selected ? "#2563eb" : "#000",
+    weight: selected ? weight + 1.4 : weight,
+    opacity: 1,
     fillColor: territoryColor(zip),
     fillOpacity: state.territories[zip]?.last_worked ? 0.55 : 0.02
   };
@@ -308,7 +319,7 @@ function renderVisibleZips() {
   if (!shouldShowZips()) return;
 
   const b = map.getBounds().pad(0.25);
-  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 600);
+  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 1400);
 
   zipLayer = L.geoJSON({ type:"FeatureCollection", features }, {
     renderer: canvasRenderer,
@@ -434,9 +445,11 @@ window.clearZip = async function(zip) {
 };
 function refreshMap() {
   ensureCoverageState();
+  ensureZipLineSettings();
   saveLocal();
   if (zipLayer) zipLayer.setStyle(zipStyle);
   renderCoverageAreas();
+  if (!zipLayer && zipData && shouldShowZips()) scheduleRender();
   updateSelectedInfo();
 }
 
@@ -1065,7 +1078,7 @@ document.getElementById("closeMenuBtn").onclick = () => toggle("menuPanel");
 document.getElementById("applyPerfBtn").onclick = () => {
   state.settings.boundaryMode = document.getElementById("zipBoundaryMode").value;
   state.settings.labelsMode = document.getElementById("zipLabelsMode").value;
-  state.settings.zipZoom = Number(document.getElementById("zipZoomInput").value || 9);
+  state.settings.zipZoom = Number(document.getElementById("zipZoomInput").value || 6);
   saveLocal();
   scheduleRender();
   updateSelectedInfo();

@@ -413,3 +413,13 @@ body {
     right: 14px !important;
   }
 }
+
+
+/* ZIP line visibility restore */
+.zip-label{
+  z-index: 4200 !important;
+}
+.leaflet-overlay-pane svg path,
+.leaflet-overlay-pane canvas{
+  pointer-events:auto;
+}
