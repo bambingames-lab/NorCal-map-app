@@ -219,3 +219,26 @@ body.drawing-active .leaflet-map-pane{
   margin:0 0 8px;
   font-size:15px;
 }
+
+
+/* Clickable drawing tags */
+.coverage-tag-marker{
+  background:transparent;
+  border:none;
+}
+.coverage-tag-button{
+  width:auto!important;
+  white-space:nowrap;
+  background:rgba(0,0,0,.88)!important;
+  color:#9DE600!important;
+  border:1px solid rgba(157,230,0,.85)!important;
+  border-radius:999px!important;
+  padding:4px 9px!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  box-shadow:0 3px 10px rgba(0,0,0,.3);
+  touch-action:manipulation;
+}
+.coverage-tag-button:active{
+  transform:scale(.96);
+}

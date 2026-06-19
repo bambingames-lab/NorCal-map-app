@@ -35,6 +35,7 @@ let supabaseClient = null;
 let zipData = null;
 let zipLayer = null;
 let coverageLayer = null;
+let coverageTagLayer = null;
 let activeDrawingLayer = null;
 let selectedZip = null;
 let renderTimer = null;
@@ -415,11 +416,71 @@ function refreshMap() {
   updateSelectedInfo();
 }
 
+
+function coveragePopupHtml(a) {
+  return `
+    <div class="coveragePopup">
+      <strong>Coverage area</strong><br>
+      Tag: ${a.user_tag || "Not set"}<br>
+      By: ${a.user_email || "Unknown"}<br>
+      Date: ${a.last_worked || "Not set"}<br>
+      ZIP: ${a.zip || "Not assigned"}<br>
+
+      <label>Tag/name</label>
+      <input id="coverageTag_${a.id}" type="text" value="${a.user_tag || ""}" placeholder="Tag above drawing">
+
+      <label>Area color</label>
+      <input id="coverageColor_${a.id}" type="color" value="${a.color || "#22c55e"}">
+
+      <label>Worked date</label>
+      <input id="coverageDate_${a.id}" type="date" value="${a.last_worked || ""}">
+
+      <button class="secondary" onclick="saveCoverageDetails('${a.id}')">Save Area Details</button>
+      <button onclick="startEditCoverageArea('${a.id}')">Redraw / Edit Shape</button>
+      <button class="danger" onclick="deleteCoverageArea('${a.id}')">Delete Area</button>
+    </div>
+  `;
+}
+
+function polygonCenterFromGeometry(geometry) {
+  try {
+    const coords = geometry.coordinates && geometry.coordinates[0] ? geometry.coordinates[0] : [];
+    if (!coords.length) return null;
+    let lat = 0, lng = 0, count = 0;
+    coords.forEach(pair => {
+      if (!Array.isArray(pair) || pair.length < 2) return;
+      lng += Number(pair[0]);
+      lat += Number(pair[1]);
+      count++;
+    });
+    if (!count) return null;
+    return [lat / count, lng / count];
+  } catch {
+    return null;
+  }
+}
+
+function openCoverageEditor(id) {
+  const a = state.coverageAreas[id];
+  if (!a) return;
+  const center = polygonCenterFromGeometry(a.geometry);
+  if (!center) return;
+  L.popup()
+    .setLatLng(center)
+    .setContent(coveragePopupHtml(a))
+    .openOn(map);
+}
+window.openCoverageEditor = openCoverageEditor;
+
 function renderCoverageAreas() {
   ensureCoverageState();
   if (coverageLayer) {
     map.removeLayer(coverageLayer);
     coverageLayer = null;
+  }
+  if (coverageTagLayer) {
+    map.removeLayer(coverageTagLayer);
+    coverageTagLayer = null;
   }
 
   const features = Object.values(state.coverageAreas || {})
@@ -447,38 +508,33 @@ function renderCoverageAreas() {
     },
     onEachFeature: (feature, layer) => {
       const a = state.coverageAreas[feature.properties.id];
-      const tagText = a.user_tag || a.user_email || "Coverage";
-      layer.bindTooltip(tagText, {
-        permanent: true,
-        direction: "center",
-        className: "coverage-tag-label"
-      });
-      layer.bindPopup(`
-        <div class="coveragePopup">
-          <strong>Coverage area</strong><br>
-          Tag: ${a.user_tag || "Not set"}<br>
-          By: ${a.user_email || "Unknown"}<br>
-          Date: ${a.last_worked || "Not set"}<br>
-          ZIP: ${a.zip || "Not assigned"}<br>
-
-          <label>Tag/name</label>
-          <input id="coverageTag_${a.id}" type="text" value="${a.user_tag || ""}" placeholder="Tag above drawing">
-          <label>Area color</label>
-          <input id="coverageColor_${a.id}" type="color" value="${a.color || "#22c55e"}">
-
-          <label>Worked date</label>
-          <input id="coverageDate_${a.id}" type="date" value="${a.last_worked || ""}">
-
-          <button class="secondary" onclick="saveCoverageDetails('${a.id}')">Save Area Details</button>
-          <button onclick="startEditCoverageArea('${a.id}')">Redraw / Edit Shape</button>
-          <button class="danger" onclick="deleteCoverageArea('${a.id}')">Delete Area</button>
-        </div>
-      `);
+      layer.bindPopup(coveragePopupHtml(a));
+      layer.on("click", () => openCoverageEditor(a.id));
     }
   }).addTo(map);
 
+  coverageTagLayer = L.layerGroup();
+  features.forEach(a => {
+    const center = polygonCenterFromGeometry(a.geometry);
+    if (!center) return;
+    const tagText = a.user_tag || a.user_email || "Coverage";
+    const marker = L.marker(center, {
+      interactive: true,
+      keyboard: false,
+      icon: L.divIcon({
+        className: "coverage-tag-marker",
+        html: `<button class="coverage-tag-button" onclick="openCoverageEditor('${a.id}')">${tagText}</button>`,
+        iconSize: null
+      })
+    });
+    marker.on("click", () => openCoverageEditor(a.id));
+    coverageTagLayer.addLayer(marker);
+  });
+  coverageTagLayer.addTo(map);
+
+  if (coverageLayer) coverageLayer.bringToBack();
   if (zipLayer) zipLayer.bringToFront();
-  coverageLayer.bringToBack();
+  if (coverageTagLayer) coverageTagLayer.bringToFront();
 }
 
 function updateSelectedInfo() {
@@ -664,6 +720,7 @@ async function saveCoverageArea(area) {
 
 window.deleteCoverageArea = async function(id) {
   if (!state.coverageAreas[id]) return;
+  if (!confirm("Delete this freehand area?")) return;
   delete state.coverageAreas[id];
 
   if (supabaseClient && currentUser) {
