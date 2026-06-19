@@ -38,6 +38,16 @@
       <button id="signUpBtn" class="secondary">Create Account</button>
       <button id="signOutBtn" class="danger hidden">Sign Out</button>
       <div id="authStatus" class="small"></div>
+
+      <div class="profileBox">
+        <h3>My Profile</h3>
+        <label>Display name / tag</label>
+        <input id="profileNameInput" type="text" placeholder="Example: Brandon">
+        <label>My drawing color</label>
+        <input id="profileColorInput" type="color" value="#22c55e">
+        <button id="saveProfileBtn" class="secondary">Save My Profile</button>
+        <div class="small">This name and color are used on freehand drawings.</div>
+      </div>
     </div>
   </div>
 
@@ -127,6 +137,21 @@
     <label>My color</label>
     <input id="userColorInputFab" type="color" value="#22c55e">
     <button id="saveUserIdentityBtn">Save Tag + Color</button>
+
+    <details class="drawFilterBox">
+      <summary>Filter Drawings</summary>
+      <label>Show drawings</label>
+      <select id="coverageFilterMode">
+        <option value="all">All drawings</option>
+        <option value="mine">Only mine</option>
+        <option value="tag">By tag/name</option>
+      </select>
+      <label>Tag/name filter</label>
+      <input id="coverageFilterTag" type="text" placeholder="Type a tag/name">
+      <button id="applyCoverageFilterBtn" class="secondary">Apply Filter</button>
+      <button id="clearCoverageFilterBtn" class="secondary">Clear Filter</button>
+    </details>
+
     <button id="startDrawBtnFab">Start Drawing</button>
     <button id="finishDrawBtnFab" class="secondary">Finish / Save</button>
     <button id="cancelDrawBtnFab" class="danger">Cancel</button>
@@ -137,7 +162,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=8"></script>
-  <script src="bundle.js?v=8"></script>
+  <script src="config.js?v=9"></script>
+  <script src="bundle.js?v=9"></script>
 </body>
 </html>

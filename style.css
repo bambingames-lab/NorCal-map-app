@@ -171,3 +171,38 @@ body.drawing-active #map{
 body.drawing-active .leaflet-container{
   touch-action:none;
 }
+
+
+.profileBox{
+  border:1px solid #e7f1e8;
+  border-radius:14px;
+  padding:10px;
+  margin-top:12px;
+  background:#faffef;
+}
+.profileBox h3{
+  margin:0 0 8px;
+  font-size:15px;
+}
+.drawFilterBox{
+  margin:10px 0;
+  border:1px solid #e7f1e8;
+  border-radius:12px;
+  overflow:hidden;
+}
+.drawFilterBox summary{
+  padding:9px 10px;
+  font-weight:900;
+  background:#f7ffe6;
+}
+body.drawing-active, body.drawing-active *{
+  -webkit-user-select:none;
+  user-select:none;
+}
+body.drawing-active #map,
+body.drawing-active .leaflet-container,
+body.drawing-active .leaflet-pane,
+body.drawing-active .leaflet-map-pane{
+  touch-action:none!important;
+  -ms-touch-action:none!important;
+}

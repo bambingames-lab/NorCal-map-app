@@ -22,7 +22,9 @@ const defaultState = {
     timeMode: "months",
     threshold: 3,
     userColor: "#22c55e",
-    userTag: ""
+    userTag: "",
+    coverageFilterMode: "all",
+    coverageFilterTag: ""
   }
 };
 
@@ -39,6 +41,7 @@ let renderTimer = null;
 let isDrawing = false;
 let drawingPoints = [];
 let editingCoverageId = null;
+let isPointerDrawing = false;
 
 const hasSupabase = Boolean(window.TM_SUPABASE_URL && window.TM_SUPABASE_ANON_KEY);
 
@@ -78,6 +81,8 @@ function ensureCoverageState() {
   state.settings = state.settings || {};
   state.settings.userColor = state.settings.userColor || "#22c55e";
   state.settings.userTag = state.settings.userTag || "";
+  state.settings.coverageFilterMode = state.settings.coverageFilterMode || "all";
+  state.settings.coverageFilterTag = state.settings.coverageFilterTag || "";
 }
 ensureCoverageState();
 
@@ -96,7 +101,93 @@ function coverageOpacity(area) {
 }
 
 function userDisplayName() {
-  return currentUser?.email || "Local user";
+  return state.settings.userTag || currentUser?.email || "Local user";
+}
+
+async function saveUserProfile() {
+  ensureCoverageState();
+
+  const nameEl = document.getElementById("profileNameInput") || document.getElementById("userTagInput");
+  const colorEl = document.getElementById("profileColorInput") || document.getElementById("userColorInputFab");
+
+  const displayName = nameEl ? nameEl.value.trim() : "";
+  const color = colorEl ? colorEl.value : "#22c55e";
+
+  state.settings.userTag = displayName || state.settings.userTag || currentUser?.email || "User";
+  state.settings.userColor = color || state.settings.userColor || "#22c55e";
+  saveLocal();
+
+  syncProfileInputs();
+
+  if (supabaseClient && currentUser) {
+    await supabaseClient.from("user_profiles").upsert({
+      user_id: currentUser.id,
+      email: currentUser.email,
+      display_name: state.settings.userTag,
+      color: state.settings.userColor,
+      updated_at: new Date().toISOString()
+    });
+  }
+
+  alert("Profile saved.");
+}
+
+function syncProfileInputs() {
+  const ids = ["profileNameInput", "userTagInput"];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = state.settings.userTag || "";
+  });
+
+  const colorIds = ["profileColorInput", "userColorInputFab", "userColorInput"];
+  colorIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = state.settings.userColor || "#22c55e";
+  });
+}
+
+async function loadUserProfile() {
+  if (!supabaseClient || !currentUser) {
+    syncProfileInputs();
+    return;
+  }
+
+  const { data } = await supabaseClient
+    .from("user_profiles")
+    .select("*")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (data) {
+    state.settings.userTag = data.display_name || state.settings.userTag || currentUser.email;
+    state.settings.userColor = data.color || state.settings.userColor || "#22c55e";
+    saveLocal();
+  } else if (!state.settings.userTag) {
+    state.settings.userTag = currentUser.email;
+    saveLocal();
+  }
+
+  syncProfileInputs();
+}
+
+function coveragePassesFilter(area) {
+  const mode = state.settings.coverageFilterMode || "all";
+  const tag = String(state.settings.coverageFilterTag || "").trim().toLowerCase();
+
+  if (mode === "all") return true;
+
+  if (mode === "mine") {
+    if (!currentUser) return area.user_email === state.settings.userTag || area.user_tag === state.settings.userTag;
+    return area.user_id === currentUser.id || area.user_email === currentUser.email;
+  }
+
+  if (mode === "tag") {
+    if (!tag) return true;
+    const combined = `${area.user_tag || ""} ${area.user_email || ""}`.toLowerCase();
+    return combined.includes(tag);
+  }
+
+  return true;
 }
 
 function elapsedUnits(dateStr) {
@@ -307,7 +398,8 @@ function renderCoverageAreas() {
   }
 
   const features = Object.values(state.coverageAreas || {})
-    .filter(a => a && a.geometry);
+    .filter(a => a && a.geometry)
+    .filter(coveragePassesFilter);
 
   coverageLayer = L.geoJSON({
     type: "FeatureCollection",
@@ -581,6 +673,7 @@ function startFreehandDrawing() {
   }
 
   isDrawing = true;
+  isPointerDrawing = false;
   drawingPoints = [];
   document.body.classList.add("drawing-active");
   map.dragging.disable();
@@ -593,6 +686,7 @@ function startFreehandDrawing() {
 
 function cancelFreehandDrawing() {
   isDrawing = false;
+  isPointerDrawing = false;
   editingCoverageId = null;
   drawingPoints = [];
   document.body.classList.remove("drawing-active");
@@ -654,54 +748,66 @@ function hideDrawHint() {
 
 
 function latLngFromPointerEvent(ev) {
+  const source = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
   const rect = map.getContainer().getBoundingClientRect();
-  const point = L.point(ev.clientX - rect.left, ev.clientY - rect.top);
+  const point = L.point(source.clientX - rect.left, source.clientY - rect.top);
   return map.containerPointToLatLng(point);
+}
+
+function addDrawingPointFromEvent(ev) {
+  if (!isDrawing || !isPointerDrawing) return;
+  ev.preventDefault();
+
+  const latlng = latLngFromPointerEvent(ev);
+  const last = drawingPoints[drawingPoints.length - 1];
+
+  if (last && map.latLngToLayerPoint(last).distanceTo(map.latLngToLayerPoint(latlng)) < 4) return;
+
+  drawingPoints.push(latlng);
+
+  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
+  activeDrawingLayer = L.polygon(drawingPoints, {
+    color: state.settings.userColor || "#22c55e",
+    weight: 2,
+    fillColor: state.settings.userColor || "#22c55e",
+    fillOpacity: 0.32
+  }).addTo(map);
 }
 
 function onDrawPointerDown(ev) {
   if (!isDrawing) return;
   ev.preventDefault();
+  ev.stopPropagation();
+  isPointerDrawing = true;
   drawingPoints = [];
-  const latlng = latLngFromPointerEvent(ev);
-  drawingPoints.push(latlng);
-  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
-  activeDrawingLayer = L.polygon(drawingPoints, {
-    color: state.settings.userColor || "#22c55e",
-    weight: 2,
-    fillColor: state.settings.userColor || "#22c55e",
-    fillOpacity: 0.32
-  }).addTo(map);
-  map.getContainer().setPointerCapture?.(ev.pointerId);
+  addDrawingPointFromEvent(ev);
+  try { map.getContainer().setPointerCapture(ev.pointerId); } catch {}
 }
 
 function onDrawPointerMove(ev) {
-  if (!isDrawing || drawingPoints.length === 0) return;
+  if (!isDrawing || !isPointerDrawing) return;
   ev.preventDefault();
-  const latlng = latLngFromPointerEvent(ev);
-  const last = drawingPoints[drawingPoints.length - 1];
-  if (last && map.latLngToLayerPoint(last).distanceTo(map.latLngToLayerPoint(latlng)) < 4) return;
-  drawingPoints.push(latlng);
-
-  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
-  activeDrawingLayer = L.polygon(drawingPoints, {
-    color: state.settings.userColor || "#22c55e",
-    weight: 2,
-    fillColor: state.settings.userColor || "#22c55e",
-    fillOpacity: 0.32
-  }).addTo(map);
+  ev.stopPropagation();
+  addDrawingPointFromEvent(ev);
 }
 
 function onDrawPointerUp(ev) {
   if (!isDrawing) return;
   ev.preventDefault();
+  ev.stopPropagation();
+  isPointerDrawing = false;
+  try { map.getContainer().releasePointerCapture(ev.pointerId); } catch {}
 }
 
-map.getContainer().addEventListener("pointerdown", onDrawPointerDown, { passive:false });
-map.getContainer().addEventListener("pointermove", onDrawPointerMove, { passive:false });
-map.getContainer().addEventListener("pointerup", onDrawPointerUp, { passive:false });
-map.getContainer().addEventListener("pointercancel", onDrawPointerUp, { passive:false });
-
+const mapElForDrawing = map.getContainer();
+mapElForDrawing.addEventListener("pointerdown", onDrawPointerDown, { passive:false });
+mapElForDrawing.addEventListener("pointermove", onDrawPointerMove, { passive:false });
+mapElForDrawing.addEventListener("pointerup", onDrawPointerUp, { passive:false });
+mapElForDrawing.addEventListener("pointercancel", onDrawPointerUp, { passive:false });
+mapElForDrawing.addEventListener("touchstart", onDrawPointerDown, { passive:false });
+mapElForDrawing.addEventListener("touchmove", onDrawPointerMove, { passive:false });
+mapElForDrawing.addEventListener("touchend", onDrawPointerUp, { passive:false });
+mapElForDrawing.addEventListener("touchcancel", onDrawPointerUp, { passive:false });
 
 function drawPointFromEvent(e) {
   if (!isDrawing) return;
@@ -731,8 +837,10 @@ async function refreshAuth() {
 
   if (currentUser) {
     await checkAdminStatus();
+    await loadUserProfile();
   } else {
     isAdmin = false;
+    syncProfileInputs();
   }
 
   document.getElementById("loginBtn").textContent = currentUser ? "Account" : "Login";
@@ -861,15 +969,33 @@ if (closeDrawPanelBtn) closeDrawPanelBtn.onclick = () => drawPanel.classList.add
 
 const saveUserIdentityBtn = document.getElementById("saveUserIdentityBtn");
 if (saveUserIdentityBtn) {
-  saveUserIdentityBtn.onclick = () => {
-    const tag = document.getElementById("userTagInput").value.trim();
-    const color = document.getElementById("userColorInputFab").value || "#22c55e";
-    state.settings.userTag = tag;
-    state.settings.userColor = color;
-    const oldColorInput = document.getElementById("userColorInput");
-    if (oldColorInput) oldColorInput.value = color;
+  saveUserIdentityBtn.onclick = saveUserProfile;
+}
+
+const saveProfileBtn = document.getElementById("saveProfileBtn");
+if (saveProfileBtn) {
+  saveProfileBtn.onclick = saveUserProfile;
+}
+
+const applyCoverageFilterBtn = document.getElementById("applyCoverageFilterBtn");
+if (applyCoverageFilterBtn) {
+  applyCoverageFilterBtn.onclick = () => {
+    state.settings.coverageFilterMode = document.getElementById("coverageFilterMode").value;
+    state.settings.coverageFilterTag = document.getElementById("coverageFilterTag").value.trim();
     saveLocal();
-    alert("Drawing tag and color saved.");
+    renderCoverageAreas();
+  };
+}
+
+const clearCoverageFilterBtn = document.getElementById("clearCoverageFilterBtn");
+if (clearCoverageFilterBtn) {
+  clearCoverageFilterBtn.onclick = () => {
+    state.settings.coverageFilterMode = "all";
+    state.settings.coverageFilterTag = "";
+    document.getElementById("coverageFilterMode").value = "all";
+    document.getElementById("coverageFilterTag").value = "";
+    saveLocal();
+    renderCoverageAreas();
   };
 }
 const startDrawBtnFab = document.getElementById("startDrawBtnFab");
@@ -886,8 +1012,11 @@ function initControls() {
   if (colorInput) colorInput.value = state.settings.userColor || "#22c55e";
   const fabColorInput = document.getElementById("userColorInputFab");
   if (fabColorInput) fabColorInput.value = state.settings.userColor || "#22c55e";
-  const tagInput = document.getElementById("userTagInput");
-  if (tagInput) tagInput.value = state.settings.userTag || "";
+  syncProfileInputs();
+  const filterMode = document.getElementById("coverageFilterMode");
+  if (filterMode) filterMode.value = state.settings.coverageFilterMode || "all";
+  const filterTag = document.getElementById("coverageFilterTag");
+  if (filterTag) filterTag.value = state.settings.coverageFilterTag || "";
   document.getElementById("zipBoundaryMode").value = state.settings.boundaryMode;
   document.getElementById("zipLabelsMode").value = state.settings.labelsMode;
   document.getElementById("zipZoomInput").value = state.settings.zipZoom;
