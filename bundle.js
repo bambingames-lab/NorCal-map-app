@@ -25,6 +25,7 @@ const defaultState = {
 
 let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || structuredClone(defaultState);
 let currentUser = null;
+let isAdmin = false;
 let supabaseClient = null;
 let zipData = null;
 let zipLayer = null;
@@ -332,18 +333,51 @@ function subscribeRealtime() {
     .subscribe();
 }
 
+// Admin permissions
+async function checkAdminStatus() {
+  isAdmin = false;
+
+  if (!supabaseClient || !currentUser) return false;
+
+  const { data, error } = await supabaseClient
+    .from("admins")
+    .select("user_id")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("Admin check failed:", error.message);
+    return false;
+  }
+
+  isAdmin = !!data;
+  return isAdmin;
+}
+
 // Auth
 async function refreshAuth() {
   if (!supabaseClient) {
     document.getElementById("authStatus").textContent = "Local-only mode: add Supabase URL/key in config.js for login.";
+    document.getElementById("adminBtn").classList.add("hidden");
     return;
   }
+
   const { data } = await supabaseClient.auth.getUser();
   currentUser = data?.user || null;
+
+  if (currentUser) {
+    await checkAdminStatus();
+  } else {
+    isAdmin = false;
+  }
+
   document.getElementById("loginBtn").textContent = currentUser ? "Account" : "Login";
-  document.getElementById("adminBtn").classList.toggle("hidden", !currentUser);
+  document.getElementById("adminBtn").classList.toggle("hidden", !isAdmin);
   document.getElementById("signOutBtn").classList.toggle("hidden", !currentUser);
-  document.getElementById("authStatus").textContent = currentUser ? `Signed in: ${currentUser.email}` : "Not signed in";
+  document.getElementById("authStatus").textContent = currentUser
+    ? `Signed in: ${currentUser.email}${isAdmin ? " — Admin" : ""}`
+    : "Not signed in";
+
   if (currentUser) {
     await loadCloudData();
     subscribeRealtime();
@@ -381,6 +415,10 @@ function renderTeamsEditor() {
   `).join("");
 }
 document.getElementById("applyTeamCountBtn").onclick = () => {
+  if (!isAdmin) {
+    alert("Only the admin can change team count.");
+    return;
+  }
   const n = Math.max(1, Math.min(12, Number(document.getElementById("teamCountInput").value || 6)));
   while (state.teams.length < n) {
     const i = state.teams.length + 1;
@@ -391,6 +429,10 @@ document.getElementById("applyTeamCountBtn").onclick = () => {
   saveLocal();
 };
 document.getElementById("saveTeamsBtn").onclick = async () => {
+  if (!isAdmin) {
+    alert("Only the admin can save team settings.");
+    return;
+  }
   state.teams = state.teams.map((t, i) => ({
     id: t.id,
     name: document.getElementById(`team_name_${i}`).value.trim() || `Team ${i+1}`,
@@ -410,7 +452,14 @@ document.getElementById("saveTeamsBtn").onclick = async () => {
 function toggle(id) { document.getElementById(id).classList.toggle("hidden"); }
 document.getElementById("loginBtn").onclick = () => toggle("authPanel");
 document.getElementById("closeAuthBtn").onclick = () => toggle("authPanel");
-document.getElementById("adminBtn").onclick = () => { renderTeamsEditor(); toggle("adminPanel"); };
+document.getElementById("adminBtn").onclick = () => {
+  if (!isAdmin) {
+    alert("Admin controls are only available to the approved admin account.");
+    return;
+  }
+  renderTeamsEditor();
+  toggle("adminPanel");
+};
 document.getElementById("closeAdminBtn").onclick = () => toggle("adminPanel");
 document.getElementById("menuBtn").onclick = () => toggle("menuPanel");
 document.getElementById("closeMenuBtn").onclick = () => toggle("menuPanel");
