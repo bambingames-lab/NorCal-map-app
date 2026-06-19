@@ -33,3 +33,54 @@ details>*:not(summary){margin-left:12px;margin-right:12px;}
 .popup button,.leaflet-popup-content button{width:100%;margin-top:6px;}
 .teamRow{display:grid;grid-template-columns:1fr 54px;gap:8px;align-items:center;margin-top:10px;}
 .teamRow input[type=color]{height:42px;padding:3px;}
+
+
+/* Streamlined ZIP selection popup */
+.zipQuickMenu{
+  min-width:235px;
+  max-width:280px;
+}
+.zipTitle{
+  font-size:18px;
+  font-weight:900;
+  margin-bottom:2px;
+}
+.zipSub{
+  font-size:13px;
+  color:#333;
+  margin-bottom:8px;
+}
+.quickGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+  margin:6px 0 8px;
+}
+.dateRow{
+  display:grid;
+  grid-template-columns:1fr 72px;
+  gap:7px;
+  align-items:center;
+}
+.zipQuickMenu details{
+  margin-top:8px;
+  border:1px solid #e7f1e8;
+  border-radius:12px;
+  overflow:hidden;
+}
+.zipQuickMenu summary{
+  padding:9px 10px;
+  font-weight:900;
+  background:#f7ffe6;
+}
+.zipQuickMenu details label,
+.zipQuickMenu details select,
+.zipQuickMenu details textarea,
+.zipQuickMenu details button{
+  margin-left:8px;
+  margin-right:8px;
+  width:calc(100% - 16px);
+}
+.zipQuickMenu textarea{
+  min-height:70px;
+}

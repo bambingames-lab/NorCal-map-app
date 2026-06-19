@@ -174,19 +174,39 @@ function openZipPopup(layer, zip) {
   const t = state.territories[zip] || {};
   const defaultOwner = state.teams[0]?.id || "team1";
   const defaultHandoff = state.teams[1]?.id || defaultOwner;
+  const today = new Date().toISOString().slice(0,10);
+  const yesterdayDate = new Date(Date.now() - 86400000).toISOString().slice(0,10);
   layer.bindPopup(`
-    <div style="min-width:220px">
-      <strong>ZIP ${zip}</strong><br>
-      Last worked: ${t.last_worked || "Not set"}
-      <button onclick="markToday('${zip}')">Mark Today</button>
-      <label>Owner Team</label>
-      <select id="owner_${zip}">${teamOptions(t.owner_team_id || defaultOwner)}</select>
-      <label>Handoff Team</label>
-      <select id="handoff_${zip}">${teamOptions(t.handoff_team_id || defaultHandoff)}</select>
-      <button class="secondary" onclick="saveTeamsForZip('${zip}')">Save Teams</button>
-      <label>Notes</label>
-      <textarea id="notes_${zip}" placeholder="Notes for this ZIP...">${t.notes || ""}</textarea>
-      <button class="secondary" onclick="saveNotesForZip('${zip}')">Save Notes</button>
+    <div class="zipQuickMenu">
+      <div class="zipTitle">ZIP ${zip}</div>
+      <div class="zipSub">Last worked: ${t.last_worked || "Not set"}</div>
+
+      <div class="quickGrid">
+        <button onclick="setZipDate('${zip}', '${today}')">Today</button>
+        <button class="secondary" onclick="setZipDate('${zip}', '${yesterdayDate}')">Yesterday</button>
+      </div>
+
+      <label>Past date / exact date</label>
+      <div class="dateRow">
+        <input id="date_${zip}" type="date" value="${t.last_worked || ""}">
+        <button onclick="saveDateForZip('${zip}')">Save</button>
+      </div>
+
+      <details open>
+        <summary>Teams</summary>
+        <label>Owner team</label>
+        <select id="owner_${zip}">${teamOptions(t.owner_team_id || defaultOwner)}</select>
+        <label>Handoff team</label>
+        <select id="handoff_${zip}">${teamOptions(t.handoff_team_id || defaultHandoff)}</select>
+        <button class="secondary" onclick="saveTeamsForZip('${zip}')">Save Teams</button>
+      </details>
+
+      <details>
+        <summary>Notes</summary>
+        <textarea id="notes_${zip}" placeholder="Notes for this ZIP...">${t.notes || ""}</textarea>
+        <button class="secondary" onclick="saveNotesForZip('${zip}')">Save Notes</button>
+      </details>
+
       <button class="danger" onclick="clearZip('${zip}')">Clear ZIP</button>
     </div>
   `).openPopup();
@@ -197,6 +217,23 @@ window.markToday = async function(zip) {
   await saveTerritory(zip);
   refreshMap();
 };
+
+window.setZipDate = async function(zip, dateValue) {
+  state.territories[zip] = state.territories[zip] || {};
+  state.territories[zip].last_worked = dateValue;
+  await saveTerritory(zip);
+  refreshMap();
+};
+
+window.saveDateForZip = async function(zip) {
+  const el = document.getElementById("date_" + zip);
+  if (!el || !el.value) return;
+  state.territories[zip] = state.territories[zip] || {};
+  state.territories[zip].last_worked = el.value;
+  await saveTerritory(zip);
+  refreshMap();
+};
+
 window.saveTeamsForZip = async function(zip) {
   state.territories[zip] = state.territories[zip] || {};
   state.territories[zip].owner_team_id = document.getElementById("owner_"+zip).value;
