@@ -457,3 +457,9 @@ body {
   opacity: 1;
   box-shadow: 0 4px 14px rgba(0,0,0,.42);
 }
+
+
+/* Drawing flow: menu hides during stroke and returns after finger/mouse lifts */
+body.drawing-active .drawFab{
+  box-shadow:0 0 0 5px rgba(157,230,0,.28), 0 10px 24px rgba(0,0,0,.35);
+}

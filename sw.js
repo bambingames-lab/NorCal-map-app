@@ -1,4 +1,4 @@
-const CACHE_NAME = "tm-community-v16";
+const CACHE_NAME = "tm-community-v17";
 
 const ASSETS = [
   "./",

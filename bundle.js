@@ -83,7 +83,7 @@ function saveLocal() {
 
 function ensureZipLineSettings() {
   state.settings = state.settings || {};
-  if (!state.settings.boundaryMode) state.settings.boundaryMode = "auto";
+  if (!state.settings.boundaryMode || state.settings.boundaryMode === "on") state.settings.boundaryMode = "auto";
   if (!state.settings.zipZoom) state.settings.zipZoom = 9;
   if (!state.settings.labelsMode) state.settings.labelsMode = "off";
 }
@@ -299,8 +299,10 @@ function featureInBounds(feature, bounds) {
 function shouldShowZips() {
   ensureZipLineSettings();
   if (state.settings.boundaryMode === "off") return false;
-  if (state.settings.boundaryMode === "on") return true;
-  return map.getZoom() >= Number(state.settings.zipZoom || 9);
+
+  // Always zoom-gate ZIP boundaries so the map stays clean and fast when zoomed out.
+  const minZoom = Number(state.settings.zipZoom || 9);
+  return map.getZoom() >= minZoom;
 }
 function zipStyle(feature) {
   const zip = zipCode(feature);
@@ -333,12 +335,17 @@ function updateLabels() {
   });
 }
 function renderVisibleZips() {
-  if (!zipData) return;
   if (zipLayer) {
     map.removeLayer(zipLayer);
     zipLayer = null;
   }
-  if (!shouldShowZips()) return;
+
+  if (!zipData) return;
+
+  if (!shouldShowZips()) {
+    updateSelectedInfo();
+    return;
+  }
 
   const b = map.getBounds().pad(0.35);
   const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 900);
@@ -862,6 +869,21 @@ function makeCoverageId() {
   return "cov_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
 }
 
+function hideDrawPanelForDrawing() {
+  const panel = document.getElementById("drawPanel");
+  if (panel) panel.classList.add("hidden");
+}
+
+function showDrawPanelAfterStroke() {
+  const panel = document.getElementById("drawPanel");
+  if (panel && isDrawing) panel.classList.remove("hidden");
+}
+
+function hideDrawPanelDone() {
+  const panel = document.getElementById("drawPanel");
+  if (panel) panel.classList.add("hidden");
+}
+
 function startFreehandDrawing() {
   if (!currentUser && supabaseClient) {
     alert("Please sign in before drawing shared coverage areas.");
@@ -871,6 +893,7 @@ function startFreehandDrawing() {
   isDrawing = true;
   isPointerDrawing = false;
   drawingPoints = [];
+  hideDrawPanelForDrawing();
   document.body.classList.add("drawing-active");
   map.dragging.disable();
   map.touchZoom.disable();
@@ -881,6 +904,7 @@ function startFreehandDrawing() {
 }
 
 function cancelFreehandDrawing() {
+  hideDrawPanelDone();
   isDrawing = false;
   isPointerDrawing = false;
   editingCoverageId = null;
@@ -923,6 +947,7 @@ async function finishFreehandDrawing() {
 
   editingCoverageId = null;
   cancelFreehandDrawing();
+  hideDrawPanelDone();
   await saveCoverageArea(area);
 }
 
@@ -972,6 +997,7 @@ function addDrawingPointFromEvent(ev) {
 
 function onDrawPointerDown(ev) {
   if (!isDrawing) return;
+  hideDrawPanelForDrawing();
   ev.preventDefault();
   ev.stopPropagation();
   isPointerDrawing = true;
@@ -993,6 +1019,7 @@ function onDrawPointerUp(ev) {
   ev.stopPropagation();
   isPointerDrawing = false;
   try { map.getContainer().releasePointerCapture(ev.pointerId); } catch {}
+  showDrawPanelAfterStroke();
 }
 
 const mapElForDrawing = map.getContainer();
@@ -1229,7 +1256,7 @@ function initControls() {
   if (filterMode) filterMode.value = state.settings.coverageFilterMode || "all";
   const filterTag = document.getElementById("coverageFilterTag");
   if (filterTag) filterTag.value = state.settings.coverageFilterTag || "";
-  document.getElementById("zipBoundaryMode").value = state.settings.boundaryMode;
+  document.getElementById("zipBoundaryMode").value = state.settings.boundaryMode === "on" ? "auto" : state.settings.boundaryMode;
   document.getElementById("zipLabelsMode").value = state.settings.labelsMode;
   document.getElementById("zipZoomInput").value = state.settings.zipZoom;
   document.getElementById("timeMode").value = state.settings.timeMode;
@@ -1237,7 +1264,12 @@ function initControls() {
   renderTeamsEditor();
 }
 map.on("moveend zoomend", () => {
-  scheduleRender();
+  if (!shouldShowZips() && zipLayer) {
+    map.removeLayer(zipLayer);
+    zipLayer = null;
+  } else {
+    scheduleRender();
+  }
   renderCoverageAreas();
 });
 initControls();
