@@ -19,9 +19,9 @@ const defaultState = {
   territories: {},
   coverageAreas: {},
   settings: {
-    boundaryMode: "on",
+    boundaryMode: "auto",
     labelsMode: "off",
-    zipZoom: 6,
+    zipZoom: 9,
     timeMode: "months",
     threshold: 3,
     userColor: "#22c55e",
@@ -41,6 +41,7 @@ let coverageLayer = null;
 let coverageTagLayer = null;
 let activeDrawingLayer = null;
 let selectedZip = null;
+let selectedCoverageId = null;
 let renderTimer = null;
 let isDrawing = false;
 let drawingPoints = [];
@@ -82,9 +83,8 @@ function saveLocal() {
 
 function ensureZipLineSettings() {
   state.settings = state.settings || {};
-  // Re-implement ZIP lines as visible by default. Existing old cached settings may have hidden them.
-  if (!state.settings.boundaryMode || state.settings.boundaryMode === "off") state.settings.boundaryMode = "on";
-  if (!state.settings.zipZoom || Number(state.settings.zipZoom) > 8) state.settings.zipZoom = 6;
+  if (!state.settings.boundaryMode) state.settings.boundaryMode = "auto";
+  if (!state.settings.zipZoom) state.settings.zipZoom = 9;
   if (!state.settings.labelsMode) state.settings.labelsMode = "off";
 }
 ensureZipLineSettings();
@@ -300,13 +300,13 @@ function shouldShowZips() {
   ensureZipLineSettings();
   if (state.settings.boundaryMode === "off") return false;
   if (state.settings.boundaryMode === "on") return true;
-  return map.getZoom() >= Number(state.settings.zipZoom || 6);
+  return map.getZoom() >= Number(state.settings.zipZoom || 9);
 }
 function zipStyle(feature) {
   const zip = zipCode(feature);
   const zoom = map.getZoom();
   const selected = selectedZip === zip;
-  let weight = zoom <= 6 ? 0.8 : zoom <= 8 ? 1.1 : zoom <= 10 ? 1.45 : 2.0;
+  let weight = zoom <= 8 ? 0.55 : zoom <= 10 ? 0.95 : zoom <= 12 ? 1.35 : 1.8;
   return {
     pane: "zipPane",
     renderer: zipRenderer,
@@ -341,7 +341,7 @@ function renderVisibleZips() {
   if (!shouldShowZips()) return;
 
   const b = map.getBounds().pad(0.35);
-  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 1600);
+  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 900);
 
   zipLayer = L.geoJSON({ type:"FeatureCollection", features }, {
     pane: "zipPane",
@@ -541,6 +541,7 @@ function polygonCenterFromGeometry(geometry) {
 }
 
 function openCoverageEditor(id) {
+  selectedCoverageId = id;
   const a = state.coverageAreas[id];
   if (!a) return;
   const center = polygonCenterFromGeometry(a.geometry);
@@ -551,6 +552,11 @@ function openCoverageEditor(id) {
     .openOn(map);
 }
 window.openCoverageEditor = openCoverageEditor;
+
+function shouldShowCoverageTags() {
+  // User tags stay hidden until zoomed in, except the chosen/selected drawing tag.
+  return map.getZoom() >= 10;
+}
 
 function renderCoverageAreas() {
   ensureCoverageState();
@@ -600,6 +606,8 @@ function renderCoverageAreas() {
   features.forEach(a => {
     const center = polygonCenterFromGeometry(a.geometry);
     if (!center) return;
+    const isSelected = selectedCoverageId === a.id;
+    if (!shouldShowCoverageTags() && !isSelected) return;
     const tagText = a.user_tag || a.user_email || "Coverage";
     const marker = L.marker(center, {
       pane: "tagPane",
@@ -607,7 +615,7 @@ function renderCoverageAreas() {
       keyboard: false,
       icon: L.divIcon({
         className: "coverage-tag-marker",
-        html: `<button class="coverage-tag-button" onclick="openCoverageEditor('${a.id}')">${tagText}</button>`,
+        html: `<button class="coverage-tag-button ${isSelected ? "selected-tag" : ""}" onclick="openCoverageEditor('${a.id}')">${tagText}</button>`,
         iconSize: null
       })
     });
@@ -803,6 +811,7 @@ window.deleteCoverageArea = async function(id) {
   if (!confirm("Delete this freehand area?")) return;
   delete state.coverageAreas[id];
 
+  if (selectedCoverageId === id) selectedCoverageId = null;
   if (supabaseClient && currentUser) {
     await supabaseClient.from("coverage_areas").delete().eq("id", id);
   }
@@ -1125,7 +1134,7 @@ document.getElementById("closeMenuBtn").onclick = () => toggle("menuPanel");
 document.getElementById("applyPerfBtn").onclick = () => {
   state.settings.boundaryMode = document.getElementById("zipBoundaryMode").value;
   state.settings.labelsMode = document.getElementById("zipLabelsMode").value;
-  state.settings.zipZoom = Number(document.getElementById("zipZoomInput").value || 6);
+  state.settings.zipZoom = Number(document.getElementById("zipZoomInput").value || 9);
   saveLocal();
   scheduleRender();
   updateSelectedInfo();
@@ -1227,7 +1236,10 @@ function initControls() {
   document.getElementById("thresholdInput").value = state.settings.threshold;
   renderTeamsEditor();
 }
-map.on("moveend zoomend", scheduleRender);
+map.on("moveend zoomend", () => {
+  scheduleRender();
+  renderCoverageAreas();
+});
 initControls();
 renderCoverageAreas();
 refreshAuth();

@@ -442,3 +442,18 @@ body {
 .coverage-tag-button {
   pointer-events: auto !important;
 }
+
+
+/* Zoomed-in ZIPs and smaller user tags */
+.coverage-tag-button{
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+  border-radius: 999px !important;
+  opacity: .88;
+}
+.coverage-tag-button.selected-tag{
+  font-size: 13px !important;
+  padding: 4px 10px !important;
+  opacity: 1;
+  box-shadow: 0 4px 14px rgba(0,0,0,.42);
+}
