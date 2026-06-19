@@ -43,6 +43,7 @@ let activeDrawingLayer = null;
 let selectedZip = null;
 let selectedCoverageId = null;
 let renderTimer = null;
+let coverageSyncTimer = null;
 let isDrawing = false;
 let drawingPoints = [];
 let editingCoverageId = null;
@@ -694,13 +695,15 @@ async function loadCloudData() {
   }
   const coverage = await supabaseClient.from("coverage_areas").select("*");
   if (!coverage.error && coverage.data) {
-    // Merge cloud drawings instead of wiping local first, so drawings do not vanish on reload if one fetch fails.
-    state.coverageAreas = state.coverageAreas || {};
+    // Supabase is the source of truth. Replace local cache on successful fetch
+    // so drawings deleted on another device do not come back from localStorage.
+    const freshCoverageAreas = {};
     coverage.data.forEach(a => {
       if (!a || !a.id || !a.geometry) return;
-      const normalized = normalizeCoverageArea(a, state.coverageAreas[a.id] || {});
-      if (normalized) state.coverageAreas[a.id] = normalized;
+      const normalized = normalizeCoverageArea(a, {});
+      if (normalized) freshCoverageAreas[a.id] = normalized;
     });
+    state.coverageAreas = freshCoverageAreas;
   } else if (coverage.error) {
     console.warn("Coverage load failed:", coverage.error.message);
   }
@@ -730,7 +733,12 @@ function subscribeRealtime() {
     .on("postgres_changes", { event:"*", schema:"public", table:"coverage_areas" }, payload => {
       const row = payload.new || payload.old;
       if (!row?.id) return;
-      if (payload.eventType === "DELETE") delete state.coverageAreas[row.id];
+      if (payload.eventType === "DELETE") {
+        delete state.coverageAreas[row.id];
+        if (selectedCoverageId === row.id) selectedCoverageId = null;
+        saveLocal();
+        try { map.closePopup(); } catch {}
+      }
       else {
         const normalized = normalizeCoverageArea(row, state.coverageAreas[row.id] || {});
         if (normalized) state.coverageAreas[row.id] = normalized;
@@ -750,6 +758,17 @@ function subscribeRealtime() {
       refreshMap();
     })
     .subscribe();
+}
+
+function startCoverageSyncRefresh() {
+  if (coverageSyncTimer) clearInterval(coverageSyncTimer);
+  if (!supabaseClient || !currentUser) return;
+
+  coverageSyncTimer = setInterval(() => {
+    if (!document.hidden && currentUser) {
+      loadCloudData();
+    }
+  }, 15000);
 }
 
 // Admin permissions
@@ -815,15 +834,35 @@ async function saveCoverageArea(area) {
 
 window.deleteCoverageArea = async function(id) {
   if (!state.coverageAreas[id]) return;
-  if (!confirm("Delete this freehand area?")) return;
-  delete state.coverageAreas[id];
+  if (!confirm("Delete this freehand area for everyone?")) return;
 
+  const backup = state.coverageAreas[id];
+
+  delete state.coverageAreas[id];
   if (selectedCoverageId === id) selectedCoverageId = null;
+  saveLocal();
+  refreshMap();
+
+  try { map.closePopup(); } catch {}
+
   if (supabaseClient && currentUser) {
-    await supabaseClient.from("coverage_areas").delete().eq("id", id);
+    const { error } = await supabaseClient
+      .from("coverage_areas")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      // Put it back if Supabase refused the delete.
+      state.coverageAreas[id] = backup;
+      saveLocal();
+      refreshMap();
+      alert("Could not delete freehand area from the shared database: " + error.message);
+      return;
+    }
   }
 
-  refreshMap();
+  // Extra refresh catches devices/browsers that missed the realtime delete event.
+  setTimeout(loadCloudData, 400);
 };
 
 window.saveCoverageDetails = async function(id) {
@@ -1076,6 +1115,7 @@ async function refreshAuth() {
   if (currentUser) {
     await loadCloudData();
     subscribeRealtime();
+    startCoverageSyncRefresh();
   }
 }
 document.getElementById("signInBtn").onclick = async () => {
