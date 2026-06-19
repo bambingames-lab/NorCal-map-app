@@ -23,7 +23,6 @@ const defaultState = {
     threshold: 3,
     userColor: "#22c55e",
     userTag: "",
-    userTeamId: "",
     coverageFilterMode: "all",
     coverageFilterTag: ""
   }
@@ -65,23 +64,6 @@ function teamById(id) {
   return state.teams.find(t => t.id === id) || state.teams[0];
 }
 
-function teamColorById(id) {
-  const team = teamById(id);
-  return team?.color || "#9DE600";
-}
-
-function profileTeamOptions(selectedId) {
-  return state.teams.map(t => `<option value="${t.id}" ${selectedId === t.id ? "selected" : ""}>${t.name}</option>`).join("");
-}
-
-function syncProfileTeamInputs() {
-  const teamIds = ["profileTeamInput", "userTeamInputFab"];
-  teamIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = profileTeamOptions(state.settings.userTeamId || (state.teams[0] && state.teams[0].id));
-  });
-}
-
 function hexToRgb(hex) {
   const n = parseInt(String(hex || "#000000").replace("#", ""), 16);
   return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
@@ -100,7 +82,6 @@ function ensureCoverageState() {
   state.settings = state.settings || {};
   state.settings.userColor = state.settings.userColor || "#22c55e";
   state.settings.userTag = state.settings.userTag || "";
-  state.settings.userTeamId = state.settings.userTeamId || (state.teams && state.teams[0] ? state.teams[0].id : "");
   state.settings.coverageFilterMode = state.settings.coverageFilterMode || "all";
   state.settings.coverageFilterTag = state.settings.coverageFilterTag || "";
 }
@@ -129,15 +110,12 @@ async function saveUserProfile() {
 
   const nameEl = document.getElementById("profileNameInput") || document.getElementById("userTagInput");
   const colorEl = document.getElementById("profileColorInput") || document.getElementById("userColorInputFab");
-  const teamEl = document.getElementById("profileTeamInput") || document.getElementById("userTeamInputFab");
 
   const displayName = nameEl ? nameEl.value.trim() : "";
   const color = colorEl ? colorEl.value : "#22c55e";
-  const teamId = teamEl ? teamEl.value : (state.settings.userTeamId || (state.teams[0] && state.teams[0].id));
 
   state.settings.userTag = displayName || state.settings.userTag || currentUser?.email || "User";
   state.settings.userColor = color || state.settings.userColor || "#22c55e";
-  state.settings.userTeamId = teamId || state.settings.userTeamId || (state.teams[0] && state.teams[0].id);
   saveLocal();
 
   syncProfileInputs();
@@ -152,7 +130,6 @@ async function saveUserProfile() {
     if (belongsToUser) {
       area.user_tag = state.settings.userTag;
       area.color = state.settings.userColor;
-      area.team_id = state.settings.userTeamId;
       area.user_email = currentUser?.email || area.user_email || state.settings.userTag;
     }
   });
@@ -165,7 +142,6 @@ async function saveUserProfile() {
       email: currentUser.email,
       display_name: state.settings.userTag,
       color: state.settings.userColor,
-      preferred_team_id: state.settings.userTeamId,
       updated_at: new Date().toISOString()
     });
 
@@ -174,7 +150,6 @@ async function saveUserProfile() {
       .update({
         user_tag: state.settings.userTag,
         color: state.settings.userColor,
-        team_id: state.settings.userTeamId,
         updated_at: new Date().toISOString()
       })
       .eq("user_id", currentUser.id);
@@ -195,8 +170,6 @@ function syncProfileInputs() {
     const el = document.getElementById(id);
     if (el) el.value = state.settings.userColor || "#22c55e";
   });
-
-  syncProfileTeamInputs();
 }
 
 async function loadUserProfile() {
@@ -214,7 +187,6 @@ async function loadUserProfile() {
   if (data) {
     state.settings.userTag = data.display_name || state.settings.userTag || currentUser.email;
     state.settings.userColor = data.color || state.settings.userColor || "#22c55e";
-    state.settings.userTeamId = data.preferred_team_id || state.settings.userTeamId || (state.teams[0] && state.teams[0].id);
     saveLocal();
   } else if (!state.settings.userTag) {
     state.settings.userTag = currentUser.email;
@@ -460,9 +432,6 @@ function coveragePopupHtml(a) {
       <label>Area color</label>
       <input id="coverageColor_${a.id}" type="color" value="${a.color || "#22c55e"}">
 
-      <label>Team outline</label>
-      <select id="coverageTeam_${a.id}">${profileTeamOptions(a.team_id || state.settings.userTeamId)}</select>
-
       <label>Worked date</label>
       <input id="coverageDate_${a.id}" type="date" value="${a.last_worked || ""}">
 
@@ -530,8 +499,8 @@ function renderCoverageAreas() {
     style: feature => {
       const a = state.coverageAreas[feature.properties.id];
       return {
-        color: teamColorById(a.team_id || state.settings.userTeamId),
-        weight: 3,
+        color: a.color || "#22c55e",
+        weight: 2,
         opacity: 0.95,
         fillColor: coverageColor(a),
         fillOpacity: coverageOpacity(a)
@@ -636,7 +605,6 @@ async function loadCloudData() {
         user_id: a.user_id,
         user_email: a.user_email,
         user_tag: a.user_tag || a.user_email || "",
-        team_id: a.team_id || "",
         color: a.color,
         last_worked: a.last_worked,
         geometry: a.geometry
@@ -648,7 +616,6 @@ async function loadCloudData() {
 
   saveLocal();
   renderTeamsEditor();
-  syncProfileTeamInputs();
   refreshMap();
 }
 function subscribeRealtime() {
@@ -679,7 +646,6 @@ function subscribeRealtime() {
         user_id: row.user_id,
         user_email: row.user_email,
         user_tag: row.user_tag || "",
-        team_id: row.team_id || "",
         color: row.color,
         last_worked: row.last_worked,
         geometry: row.geometry
@@ -726,7 +692,6 @@ async function saveCoverageArea(area) {
   ensureCoverageState();
   if (!area.user_tag) area.user_tag = state.settings.userTag || userDisplayName();
   if (!area.color) area.color = state.settings.userColor || "#22c55e";
-  if (!area.team_id) area.team_id = state.settings.userTeamId || (state.teams[0] && state.teams[0].id);
   state.coverageAreas[area.id] = area;
   saveLocal();
 
@@ -741,7 +706,6 @@ async function saveCoverageArea(area) {
     user_id: currentUser.id,
     user_email: currentUser.email,
     user_tag: area.user_tag || state.settings.userTag || currentUser.email,
-    team_id: area.team_id || state.settings.userTeamId || null,
     color: area.color,
     last_worked: area.last_worked,
     geometry: area.geometry,
@@ -772,12 +736,10 @@ window.saveCoverageDetails = async function(id) {
 
   const tagEl = document.getElementById("coverageTag_" + id);
   const colorEl = document.getElementById("coverageColor_" + id);
-  const teamEl = document.getElementById("coverageTeam_" + id);
   const dateEl = document.getElementById("coverageDate_" + id);
 
   area.user_tag = tagEl ? tagEl.value.trim() : area.user_tag;
   area.color = colorEl ? colorEl.value : area.color;
-  area.team_id = teamEl ? teamEl.value : area.team_id;
   area.last_worked = dateEl && dateEl.value ? dateEl.value : area.last_worked;
 
   await saveCoverageArea(area);
@@ -861,7 +823,6 @@ async function finishFreehandDrawing() {
     user_id: existing?.user_id || currentUser?.id || "local",
     user_email: existing?.user_email || userDisplayName(),
     user_tag: existing?.user_tag || state.settings.userTag || userDisplayName(),
-    team_id: existing?.team_id || state.settings.userTeamId || (state.teams[0] && state.teams[0].id),
     color: existing?.color || state.settings.userColor || "#22c55e",
     last_worked: existing?.last_worked || new Date().toISOString().slice(0,10),
     geometry: {
@@ -1184,7 +1145,6 @@ function initControls() {
   document.getElementById("timeMode").value = state.settings.timeMode;
   document.getElementById("thresholdInput").value = state.settings.threshold;
   renderTeamsEditor();
-  syncProfileTeamInputs();
 }
 map.on("moveend zoomend", scheduleRender);
 initControls();
