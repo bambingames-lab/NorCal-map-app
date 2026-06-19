@@ -1,7 +1,10 @@
 /* Territory Manager Community Starter
    GitHub Pages frontend + optional Supabase backend.
 */
-const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
+const ZIP_URLS = [
+  "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json",
+  "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json?cacheBust=1"
+];
 const STORAGE_KEY = "tm-community-state-v1";
 
 const defaultState = {
@@ -51,7 +54,24 @@ if (hasSupabase && window.supabase) {
 }
 
 const map = L.map("map", { preferCanvas: true }).setView([38.8, -121.3], 7);
+
+// Dedicated panes keep ZIPs and freehand coverage from fighting each other.
+map.createPane("coveragePane");
+map.getPane("coveragePane").style.zIndex = 390;
+map.getPane("coveragePane").style.pointerEvents = "auto";
+
+map.createPane("zipPane");
+map.getPane("zipPane").style.zIndex = 470;
+map.getPane("zipPane").style.pointerEvents = "auto";
+
+map.createPane("tagPane");
+map.getPane("tagPane").style.zIndex = 650;
+map.getPane("tagPane").style.pointerEvents = "auto";
+
 const canvasRenderer = L.canvas({ padding: 0.5 });
+const zipRenderer = L.canvas({ padding: 0.5, pane: "zipPane" });
+const coverageRenderer = L.canvas({ padding: 0.5, pane: "coveragePane" });
+
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors"
 }).addTo(map);
@@ -286,14 +306,16 @@ function zipStyle(feature) {
   const zip = zipCode(feature);
   const zoom = map.getZoom();
   const selected = selectedZip === zip;
-  let weight = zoom <= 6 ? 0.75 : zoom <= 8 ? 1.05 : zoom <= 10 ? 1.35 : 1.9;
+  let weight = zoom <= 6 ? 0.8 : zoom <= 8 ? 1.1 : zoom <= 10 ? 1.45 : 2.0;
   return {
-    renderer: canvasRenderer,
+    pane: "zipPane",
+    renderer: zipRenderer,
     color: selected ? "#2563eb" : "#000",
-    weight: selected ? weight + 1.4 : weight,
+    weight: selected ? weight + 1.5 : weight,
     opacity: 1,
     fillColor: territoryColor(zip),
-    fillOpacity: state.territories[zip]?.last_worked ? 0.55 : 0.02
+    fillOpacity: state.territories[zip]?.last_worked ? 0.42 : 0.01,
+    interactive: true
   };
 }
 function bindTooltip(layer, feature) {
@@ -318,21 +340,28 @@ function renderVisibleZips() {
   }
   if (!shouldShowZips()) return;
 
-  const b = map.getBounds().pad(0.25);
-  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 1400);
+  const b = map.getBounds().pad(0.35);
+  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 1600);
 
   zipLayer = L.geoJSON({ type:"FeatureCollection", features }, {
-    renderer: canvasRenderer,
+    pane: "zipPane",
+    renderer: zipRenderer,
     style: zipStyle,
+    interactive: true,
     onEachFeature: (f, layer) => {
       bindTooltip(layer, f);
-      layer.on("click", () => {
+      layer.on("click", (e) => {
+        L.DomEvent.stopPropagation(e);
         selectedZip = zipCode(f);
         openZipPopup(layer, selectedZip);
         updateSelectedInfo();
+        if (zipLayer) zipLayer.setStyle(zipStyle);
       });
     }
   }).addTo(map);
+
+  try { zipLayer.bringToFront(); } catch {}
+  if (coverageTagLayer) try { coverageTagLayer.bringToFront(); } catch {}
   updateLabels();
 }
 function scheduleRender() {
@@ -340,20 +369,34 @@ function scheduleRender() {
   renderTimer = setTimeout(renderVisibleZips, 160);
 }
 async function loadZipData() {
-  document.getElementById("selectedInfo").innerHTML = "Loading ZIP data…";
+  const infoEl = document.getElementById("selectedInfo");
+  if (infoEl) infoEl.innerHTML = "Loading ZIP data…";
+
   const cached = localStorage.getItem("tm_zip_geojson_cache");
   if (cached) {
-    try { zipData = JSON.parse(cached); scheduleRender(); } catch {}
+    try {
+      zipData = JSON.parse(cached);
+      scheduleRender();
+    } catch {}
   }
-  try {
-    const res = await fetch(ZIP_URL, { cache: "force-cache" });
-    zipData = await res.json();
-    try { localStorage.setItem("tm_zip_geojson_cache", JSON.stringify(zipData)); } catch {}
-    scheduleRender();
-    updateSelectedInfo();
-  } catch (err) {
-    document.getElementById("selectedInfo").innerHTML = "Could not load ZIP boundaries. Check internet connection.";
+
+  for (const url of ZIP_URLS) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("ZIP fetch failed " + res.status);
+      const data = await res.json();
+      if (!data || !data.features || !data.features.length) throw new Error("ZIP data empty");
+      zipData = data;
+      try { localStorage.setItem("tm_zip_geojson_cache", JSON.stringify(zipData)); } catch {}
+      scheduleRender();
+      updateSelectedInfo();
+      return;
+    } catch (err) {
+      console.warn("ZIP source failed:", url, err.message);
+    }
   }
+
+  if (infoEl) infoEl.innerHTML = "Could not load ZIP boundaries. Check connection, then refresh.";
 }
 function teamOptions(selectedId) {
   return state.teams.map(t => `<option value="${t.id}" ${selectedId === t.id ? "selected" : ""}>${t.name}</option>`).join("");
@@ -447,8 +490,8 @@ function refreshMap() {
   ensureCoverageState();
   ensureZipLineSettings();
   saveLocal();
-  if (zipLayer) zipLayer.setStyle(zipStyle);
   renderCoverageAreas();
+  if (zipLayer) zipLayer.setStyle(zipStyle);
   if (!zipLayer && zipData && shouldShowZips()) scheduleRender();
   updateSelectedInfo();
 }
@@ -532,10 +575,13 @@ function renderCoverageAreas() {
       geometry: a.geometry
     }))
   }, {
-    renderer: canvasRenderer,
+    pane: "coveragePane",
+    renderer: coverageRenderer,
+    interactive: true,
     style: feature => {
       const a = state.coverageAreas[feature.properties.id];
       return {
+        pane: "coveragePane",
         color: a.color || "#22c55e",
         weight: 2,
         opacity: 0.95,
@@ -556,6 +602,7 @@ function renderCoverageAreas() {
     if (!center) return;
     const tagText = a.user_tag || a.user_email || "Coverage";
     const marker = L.marker(center, {
+      pane: "tagPane",
       interactive: true,
       keyboard: false,
       icon: L.divIcon({
@@ -569,9 +616,9 @@ function renderCoverageAreas() {
   });
   coverageTagLayer.addTo(map);
 
-  if (coverageLayer) coverageLayer.bringToBack();
-  if (zipLayer) zipLayer.bringToFront();
-  if (coverageTagLayer) coverageTagLayer.bringToFront();
+  try { if (coverageLayer) coverageLayer.bringToBack(); } catch {}
+  try { if (zipLayer) zipLayer.bringToFront(); } catch {}
+  try { if (coverageTagLayer) coverageTagLayer.bringToFront(); } catch {}
 }
 
 function updateSelectedInfo() {

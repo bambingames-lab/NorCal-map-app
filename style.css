@@ -423,3 +423,22 @@ body {
 .leaflet-overlay-pane canvas{
   pointer-events:auto;
 }
+
+
+/* Stable ZIP + freehand layer stack */
+.leaflet-coverage-pane {
+  z-index: 390 !important;
+}
+.leaflet-zip-pane {
+  z-index: 470 !important;
+}
+.leaflet-tag-pane {
+  z-index: 650 !important;
+}
+.zip-label {
+  z-index: 520 !important;
+  pointer-events: none !important;
+}
+.coverage-tag-button {
+  pointer-events: auto !important;
+}
