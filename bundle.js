@@ -772,6 +772,8 @@ function subscribeRealtime() {
       saveLocal();
       initControls();
 initLocationControls();
+initAppTools();
+setTimeout(() => showLocationPermissionPrompt(false), 1200);
       refreshMap();
     })
     .subscribe();
@@ -798,6 +800,8 @@ function locationDisplayName() {
 function setLocationStatus(text) {
   const el = document.getElementById("locationStatus");
   if (el) el.textContent = text;
+  const menuEl = document.getElementById("locationStatusMenu");
+  if (menuEl) menuEl.textContent = text;
 }
 
 function locationPaneName() {
@@ -868,6 +872,15 @@ function handleLocationPosition(position, shouldCenter) {
   }
 
   saveMyLocationToCloud(latitude, longitude, accuracy);
+}
+
+async function enableLocationPermission() {
+  const stateResult = await checkLocationPermissionState();
+  if (stateResult === "denied") {
+    alert("Location is blocked. On iPhone, go to Settings → Privacy & Security → Location Services → Safari Websites, then choose While Using App or Ask Next Time.");
+    return;
+  }
+  locateMe(true);
 }
 
 function locateMe(shouldCenter = true) {
@@ -968,30 +981,109 @@ function startTeamLocationRefresh() {
   }, 20000);
 }
 
+
+function showLocationPermissionPrompt(force = false) {
+  const modal = document.getElementById("locationPromptModal");
+  if (!modal) return;
+
+  const alreadyAnswered = localStorage.getItem("tm_location_prompt_answered") === "yes";
+  if (!force && alreadyAnswered) return;
+
+  modal.classList.remove("hidden");
+}
+
+function hideLocationPermissionPrompt(answered = true) {
+  const modal = document.getElementById("locationPromptModal");
+  if (modal) modal.classList.add("hidden");
+  if (answered) localStorage.setItem("tm_location_prompt_answered", "yes");
+}
+
+async function checkLocationPermissionState() {
+  if (!navigator.permissions || !navigator.permissions.query) return "unknown";
+  try {
+    const result = await navigator.permissions.query({ name: "geolocation" });
+    return result.state || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+async function enableLocationFromPrompt() {
+  const stateResult = await checkLocationPermissionState();
+
+  if (stateResult === "denied") {
+    hideLocationPermissionPrompt(true);
+    alert("Location is blocked. On iPhone, go to Settings → Privacy & Security → Location Services → Safari Websites, then choose While Using App or Ask Next Time.");
+    return;
+  }
+
+  hideLocationPermissionPrompt(true);
+  locateMe(true);
+}
+
 function initLocationControls() {
   const gpsFab = document.getElementById("gpsFab");
   const gpsPanel = document.getElementById("gpsPanel");
   const closeBtn = document.getElementById("closeGpsPanelBtn");
   const locateBtn = document.getElementById("locateMeBtn");
+  const enableBtn = document.getElementById("enableLocationBtn");
   const followBtn = document.getElementById("followMeBtn");
   const stopBtn = document.getElementById("stopFollowBtn");
-  const shareInput = document.getElementById("shareLocationInput");
-  const saveBtn = document.getElementById("saveLocationSettingsBtn");
+  const openSettingsBtn = document.getElementById("openLocationSettingsBtn");
 
-  if (shareInput) shareInput.value = state.settings.shareLocation || "off";
+  const enableMenuBtn = document.getElementById("enableLocationFromMenuBtn");
+  const locateMenuBtn = document.getElementById("locateMeFromMenuBtn");
+  const startMenuBtn = document.getElementById("startTrackingFromMenuBtn");
+  const stopMenuBtn = document.getElementById("stopTrackingFromMenuBtn");
+  const shareInput = document.getElementById("shareLocationInput");
+  const shareMenuInput = document.getElementById("shareLocationMenuInput");
+  const saveBtn = document.getElementById("saveLocationSettingsBtn");
+  const permissionEnableBtn = document.getElementById("permissionEnableLocationBtn");
+  const permissionNotNowBtn = document.getElementById("permissionNotNowBtn");
+  const saveMenuBtn = document.getElementById("saveLocationMenuSettingsBtn");
+
+  const syncShareInputs = () => {
+    if (shareInput) shareInput.value = state.settings.shareLocation || "off";
+    if (shareMenuInput) shareMenuInput.value = state.settings.shareLocation || "off";
+  };
+
+  const saveShareSetting = () => {
+    const value = (shareMenuInput && shareMenuInput.value) || (shareInput && shareInput.value) || "off";
+    state.settings.shareLocation = value;
+    saveLocal();
+    syncShareInputs();
+    setLocationStatus(value === "on"
+      ? "Location sharing on. Tap Enable Location or Start Live Tracking."
+      : "Location sharing off.");
+  };
+
+  syncShareInputs();
+
   if (gpsFab && gpsPanel) gpsFab.onclick = () => gpsPanel.classList.toggle("hidden");
   if (closeBtn && gpsPanel) closeBtn.onclick = () => gpsPanel.classList.add("hidden");
-  if (locateBtn) locateBtn.onclick = () => locateMe(true);
-  if (followBtn) followBtn.onclick = startLiveTracking;
-  if (stopBtn) stopBtn.onclick = stopLiveTracking;
 
-  if (saveBtn) {
-    saveBtn.onclick = () => {
-      state.settings.shareLocation = shareInput ? shareInput.value : "off";
-      saveLocal();
-      setLocationStatus(state.settings.shareLocation === "on"
-        ? "Location sharing on. Tap Locate Me or Start Live Tracking."
-        : "Location sharing off.");
+  if (enableBtn) enableBtn.onclick = () => showLocationPermissionPrompt(true);
+  if (enableMenuBtn) enableMenuBtn.onclick = () => showLocationPermissionPrompt(true);
+  if (permissionEnableBtn) permissionEnableBtn.onclick = enableLocationFromPrompt;
+  if (permissionNotNowBtn) permissionNotNowBtn.onclick = () => hideLocationPermissionPrompt(true);
+
+  if (locateBtn) locateBtn.onclick = () => locateMe(true);
+  if (locateMenuBtn) locateMenuBtn.onclick = () => locateMe(true);
+
+  if (followBtn) followBtn.onclick = startLiveTracking;
+  if (startMenuBtn) startMenuBtn.onclick = startLiveTracking;
+
+  if (stopBtn) stopBtn.onclick = stopLiveTracking;
+  if (stopMenuBtn) stopMenuBtn.onclick = stopLiveTracking;
+
+  if (saveBtn) saveBtn.onclick = saveShareSetting;
+  if (saveMenuBtn) saveMenuBtn.onclick = saveShareSetting;
+
+  if (openSettingsBtn) {
+    openSettingsBtn.onclick = () => {
+      const panel = document.getElementById("menuPanel");
+      if (panel) panel.classList.remove("hidden");
+      if (gpsPanel) gpsPanel.classList.add("hidden");
     };
   }
 }
@@ -1611,3 +1703,38 @@ document.addEventListener("visibilitychange", () => {
     el.addEventListener(evt, e => e.stopPropagation(), { passive: true });
   });
 });
+
+
+function runAppHealthCheck() {
+  const warnings = [];
+  if (!document.getElementById("map")) warnings.push("Map container missing.");
+  if (!document.getElementById("gpsFab")) warnings.push("GPS button missing.");
+  if (!window.L) warnings.push("Leaflet did not load.");
+  if (!window.supabase) warnings.push("Supabase library did not load.");
+  if (warnings.length) console.warn("Territory Manager health check:", warnings.join(" "));
+}
+
+setTimeout(runAppHealthCheck, 1200);
+
+
+function initAppTools() {
+  const reloadBtn = document.getElementById("reloadCloudBtn");
+  if (reloadBtn) {
+    reloadBtn.onclick = async () => {
+      if (currentUser && supabaseClient) await loadCloudData();
+      refreshMap();
+      alert("Cloud data reloaded.");
+    };
+  }
+
+  const clearBtn = document.getElementById("clearLocalCacheBtn");
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      if (!confirm("Clear local cache on this device? Cloud data will stay saved.")) return;
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem("tm_zip_geojson_cache");
+      alert("Local cache cleared. Reloading app.");
+      location.reload();
+    };
+  }
+}

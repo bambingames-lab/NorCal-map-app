@@ -108,6 +108,25 @@
 
 
       <details>
+        <summary>Location Settings</summary>
+        <div class="small">Use this to enable GPS and optionally share your live position with signed-in team members.</div>
+        <button id="enableLocationFromMenuBtn">Enable Location</button>
+        <button id="locateMeFromMenuBtn" class="secondary">Locate Me</button>
+        <button id="startTrackingFromMenuBtn" class="secondary">Start Live Tracking</button>
+        <button id="stopTrackingFromMenuBtn" class="danger">Stop Tracking</button>
+        <label>Share my location with team</label>
+        <select id="shareLocationMenuInput">
+          <option value="off">Off</option>
+          <option value="on">On</option>
+        </select>
+        <button id="saveLocationMenuSettingsBtn" class="secondary">Save Location Settings</button>
+        <div id="locationStatusMenu" class="small">Location not active.</div>
+      </details>
+
+
+
+
+      <details>
         <summary>Coverage Drawing</summary>
         <div class="small">Draw a freehand filled area to show exactly where someone knocked. It saves with your user color and ages with the timer.</div>
         <label>My drawing color</label>
@@ -122,6 +141,13 @@
       <details>
         <summary>Selected Area</summary>
         <div id="selectedInfo" class="stats">Tap a ZIP when zoomed in.</div>
+      </details>
+
+      <details>
+        <summary>App Tools</summary>
+        <button id="reloadCloudBtn" class="secondary">Reload Cloud Data</button>
+        <button id="clearLocalCacheBtn" class="danger">Clear Local Cache</button>
+        <div id="appVersionText" class="small">Version 25</div>
       </details>
     </div>
   </div>
@@ -167,23 +193,29 @@
       <strong>Location</strong>
       <button id="closeGpsPanelBtn" class="miniBtn">×</button>
     </div>
-    <button id="locateMeBtn">Locate Me</button>
+    <button id="enableLocationBtn">Enable Location</button>
+    <button id="locateMeBtn" class="secondary">Locate Me</button>
     <button id="followMeBtn" class="secondary">Start Live Tracking</button>
     <button id="stopFollowBtn" class="danger">Stop Tracking</button>
-    <label>Share my location</label>
-    <select id="shareLocationInput">
-      <option value="off">Off</option>
-      <option value="on">On</option>
-    </select>
-    <button id="saveLocationSettingsBtn" class="secondary">Save Location Setting</button>
+    <button id="openLocationSettingsBtn" class="secondary">Open Location Settings</button>
     <div id="locationStatus" class="small">Location not active.</div>
+  </div>
+
+  <div id="locationPromptModal" class="permissionModal hidden">
+    <div class="permissionCard">
+      <h2>Enable Location?</h2>
+      <p>Territory Manager can show where you are compared to ZIPs, freehand areas, and teammates.</p>
+      <button id="permissionEnableLocationBtn">Enable Location</button>
+      <button id="permissionNotNowBtn" class="secondary">Not Now</button>
+      <div class="small">You can turn this on later from Menu → Location Settings.</div>
+    </div>
   </div>
 
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=23"></script>
-  <script src="bundle.js?v=23"></script>
+  <script src="config.js?v=25"></script>
+  <script src="bundle.js?v=25"></script>
 </body>
 </html>
