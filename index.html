@@ -36,6 +36,7 @@
       <input id="passwordInput" type="password" placeholder="Password" />
       <button id="signInBtn">Sign In</button>
       <button id="signUpBtn" class="secondary">Create Account</button>
+      <button id="resetPasswordBtn" class="secondary">Send Password Reset</button>
       <button id="signOutBtn" class="danger hidden">Sign Out</button>
       <div id="authStatus" class="small"></div>
 
@@ -61,6 +62,16 @@
       <input id="teamCountInput" type="number" min="1" max="12" value="9" />
       <button id="applyTeamCountBtn">Apply Team Count</button>
       <div id="teamsEditor"></div>
+
+      <div class="adminUserBox">
+        <h3>User Password Reset</h3>
+        <div class="small">Admin tool: enter a user's email and send them a secure reset link.</div>
+        <label>User email</label>
+        <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
+        <button id="adminSendResetBtn" class="secondary">Send Reset Email</button>
+        <div id="adminResetStatus" class="small"></div>
+      </div>
+
       <button id="saveTeamsBtn">Save Teams</button>
 
       <div class="adminTimerBox">
@@ -211,11 +222,25 @@
     </div>
   </div>
 
+  <div id="passwordResetModal" class="permissionModal hidden">
+    <div class="permissionCard">
+      <h2>Set New Password</h2>
+      <p>Enter a new password for this account.</p>
+      <label>New password</label>
+      <input id="newPasswordInput" type="password" placeholder="New password">
+      <label>Confirm password</label>
+      <input id="confirmPasswordInput" type="password" placeholder="Confirm password">
+      <button id="saveNewPasswordBtn">Save New Password</button>
+      <button id="cancelNewPasswordBtn" class="secondary">Cancel</button>
+      <div id="passwordResetStatus" class="small"></div>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=25"></script>
-  <script src="bundle.js?v=25"></script>
+  <script src="config.js?v=27"></script>
+  <script src="bundle.js?v=27"></script>
 </body>
 </html>

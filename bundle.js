@@ -771,6 +771,8 @@ function subscribeRealtime() {
       state.settings.threshold = Number(row.threshold || state.settings.threshold || 3);
       saveLocal();
       initControls();
+initPasswordResetControls();
+initAdminPasswordResetControls();
 initLocationControls();
 initAppTools();
 setTimeout(() => showLocationPermissionPrompt(false), 1200);
@@ -1403,6 +1405,146 @@ function drawPointFromEvent(e) {
     fillColor: state.settings.userColor || "#22c55e",
     fillOpacity: 0.32
   }).addTo(map);
+}
+
+
+
+
+// Admin password reset
+function setAdminResetStatus(text) {
+  const el = document.getElementById("adminResetStatus");
+  if (el) el.textContent = text || "";
+}
+
+async function adminSendPasswordReset() {
+  if (!isAdmin) {
+    alert("Only the admin can send password reset emails.");
+    return;
+  }
+
+  if (!supabaseClient) {
+    alert("Supabase is not connected. Check config.js.");
+    return;
+  }
+
+  const email = (document.getElementById("adminResetEmailInput")?.value || "").trim();
+  if (!email) {
+    alert("Enter the user's email first.");
+    return;
+  }
+
+  setAdminResetStatus("Sending reset email...");
+
+  const redirectTo = window.location.origin + window.location.pathname + "?v=27";
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+
+  if (error) {
+    setAdminResetStatus("Failed: " + error.message);
+    alert("Password reset failed: " + error.message);
+    return;
+  }
+
+  setAdminResetStatus("Reset email sent to " + email + ".");
+}
+
+function initAdminPasswordResetControls() {
+  const btn = document.getElementById("adminSendResetBtn");
+  if (btn) btn.onclick = adminSendPasswordReset;
+}
+
+// Password reset
+function isRecoveryUrl() {
+  const hash = window.location.hash || "";
+  const search = window.location.search || "";
+  return hash.includes("type=recovery") || search.includes("type=recovery") || hash.includes("access_token=");
+}
+
+function showPasswordResetModal() {
+  const modal = document.getElementById("passwordResetModal");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function hidePasswordResetModal() {
+  const modal = document.getElementById("passwordResetModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function setPasswordResetStatus(text) {
+  const el = document.getElementById("passwordResetStatus");
+  if (el) el.textContent = text || "";
+}
+
+async function sendPasswordReset() {
+  if (!supabaseClient) {
+    alert("Supabase is not connected. Check config.js.");
+    return;
+  }
+
+  const email = (document.getElementById("emailInput")?.value || "").trim();
+  if (!email) {
+    alert("Enter the user's email first.");
+    return;
+  }
+
+  const redirectTo = window.location.origin + window.location.pathname + "?v=26";
+
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+    redirectTo
+  });
+
+  if (error) {
+    alert("Password reset failed: " + error.message);
+    return;
+  }
+
+  alert("Password reset email sent to " + email + ".");
+}
+
+async function saveNewPassword() {
+  if (!supabaseClient) return;
+
+  const pass = document.getElementById("newPasswordInput")?.value || "";
+  const confirm = document.getElementById("confirmPasswordInput")?.value || "";
+
+  if (pass.length < 6) {
+    setPasswordResetStatus("Password must be at least 6 characters.");
+    return;
+  }
+
+  if (pass !== confirm) {
+    setPasswordResetStatus("Passwords do not match.");
+    return;
+  }
+
+  setPasswordResetStatus("Saving new password...");
+
+  const { error } = await supabaseClient.auth.updateUser({ password: pass });
+
+  if (error) {
+    setPasswordResetStatus("Failed: " + error.message);
+    return;
+  }
+
+  setPasswordResetStatus("Password updated.");
+  setTimeout(() => {
+    hidePasswordResetModal();
+    window.history.replaceState({}, document.title, window.location.origin + window.location.pathname + "?v=26");
+  }, 900);
+}
+
+function initPasswordResetControls() {
+  const resetBtn = document.getElementById("resetPasswordBtn");
+  if (resetBtn) resetBtn.onclick = sendPasswordReset;
+
+  const saveBtn = document.getElementById("saveNewPasswordBtn");
+  if (saveBtn) saveBtn.onclick = saveNewPassword;
+
+  const cancelBtn = document.getElementById("cancelNewPasswordBtn");
+  if (cancelBtn) cancelBtn.onclick = hidePasswordResetModal;
+
+  if (isRecoveryUrl()) {
+    setTimeout(showPasswordResetModal, 800);
+  }
 }
 
 
