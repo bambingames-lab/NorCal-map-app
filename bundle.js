@@ -3,7 +3,7 @@
   const STORAGE_KEY = "tm_v2_fixed_state";
 
   const state = loadState();
-  let map, zipData, zipLayer, coverageLayer, myLocationMarker, watchId = null;
+  let map, zipData, zipLayer, coverageLayer, coverageTagLayer, myLocationMarker, watchId = null;
   let currentUser = null;
   let isAdmin = false;
   let selectedZip = null;
@@ -76,12 +76,12 @@
     map = L.map("map", { preferCanvas:true }).setView([38.75, -121.3], 7);
     window.TM_V2_MAP = map;
 
-    map.createPane("coveragePane");
-    map.getPane("coveragePane").style.zIndex = 390;
     map.createPane("zipPane");
-    map.getPane("zipPane").style.zIndex = 470;
+    map.getPane("zipPane").style.zIndex = 430;
+    map.createPane("coveragePane");
+    map.getPane("coveragePane").style.zIndex = 520;
     map.createPane("tagPane");
-    map.getPane("tagPane").style.zIndex = 650;
+    map.getPane("tagPane").style.zIndex = 680;
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution:"© OpenStreetMap contributors"
@@ -164,10 +164,35 @@
     }).addTo(map);
   }
 
+  function coverageCenter(geometry){
+    try {
+      const coords = geometry.coordinates.flat(2);
+      let lat = 0, lng = 0, count = 0;
+      for (const pair of coords) {
+        if (!Array.isArray(pair) || pair.length < 2) continue;
+        lng += Number(pair[0]);
+        lat += Number(pair[1]);
+        count++;
+      }
+      if (!count) return null;
+      return [lat / count, lng / count];
+    } catch {
+      return null;
+    }
+  }
+
+  function coverageTagName(area){
+    return area?.user_tag || area?.display_name || area?.user_email || area?.email || area?.tag || "Coverage";
+  }
+
   function renderCoverage(){
     if (coverageLayer) {
       map.removeLayer(coverageLayer);
       coverageLayer = null;
+    }
+    if (coverageTagLayer) {
+      map.removeLayer(coverageTagLayer);
+      coverageTagLayer = null;
     }
 
     const show = state.settings.coverageMode === "always" ||
@@ -175,9 +200,13 @@
 
     if (!show) return;
 
-    const features = Object.values(state.coverageAreas || {})
-      .filter(a => a.geometry)
-      .map(a => ({ type:"Feature", properties:{ id:a.id }, geometry:a.geometry }));
+    const areas = Object.values(state.coverageAreas || {}).filter(a => a.geometry);
+
+    const features = areas.map(a => ({
+      type:"Feature",
+      properties:{ id:a.id },
+      geometry:a.geometry
+    }));
 
     coverageLayer = L.geoJSON({ type:"FeatureCollection", features }, {
       pane:"coveragePane",
@@ -185,12 +214,35 @@
         const a = state.coverageAreas[f.properties.id];
         return {
           color: a?.team_color || a?.color || "#22c55e",
-          weight: 2,
+          weight: 3,
+          opacity: 1,
           fillColor: a?.color || "#22c55e",
-          fillOpacity: 0.58
+          fillOpacity: 0.62
         };
       }
     }).addTo(map);
+
+    // Name tags above freehand drawings. Only show when close enough so the map stays clean.
+    coverageTagLayer = L.layerGroup();
+    if (map.getZoom() >= Number(state.settings.zipZoom || 10)) {
+      areas.forEach(a => {
+        const center = coverageCenter(a.geometry);
+        if (!center) return;
+        const tag = coverageTagName(a);
+        const marker = L.marker(center, {
+          pane:"tagPane",
+          interactive:false,
+          keyboard:false,
+          icon:L.divIcon({
+            className:"",
+            html:`<div class="coverageTag">${tag}</div>`,
+            iconSize:null
+          })
+        });
+        coverageTagLayer.addLayer(marker);
+      });
+    }
+    coverageTagLayer.addTo(map);
   }
 
   async function initAuth(){
