@@ -403,3 +403,25 @@ body.coverage-edit-mode .leaflet-coverage-pane *{
   box-shadow:0 3px 12px rgba(0,0,0,.35);
   pointer-events:none!important;
 }
+
+
+/* Tag visibility fix */
+.coverageTag{
+  display:inline-block!important;
+  transform:translate(-50%, -120%)!important;
+  background:#050505!important;
+  color:#9DE600!important;
+  border:2px solid #9DE600!important;
+  border-radius:999px!important;
+  padding:4px 10px!important;
+  font-size:12px!important;
+  font-weight:900!important;
+  white-space:nowrap!important;
+  box-shadow:0 4px 14px rgba(0,0,0,.45)!important;
+  pointer-events:none!important;
+  z-index:9999!important;
+}
+.leaflet-tag-pane{
+  z-index:700!important;
+  pointer-events:none!important;
+}

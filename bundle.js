@@ -228,23 +228,31 @@
 
   function coverageCenter(geometry){
     try {
-      const coords = geometry.coordinates.flat(2);
-      let lat = 0, lng = 0, count = 0;
-      for (const pair of coords) {
-        if (!Array.isArray(pair) || pair.length < 2) continue;
-        lng += Number(pair[0]);
-        lat += Number(pair[1]);
-        count++;
-      }
-      if (!count) return null;
-      return [lat / count, lng / count];
+      const points = [];
+      const collect = (arr) => {
+        if (!Array.isArray(arr)) return;
+        if (typeof arr[0] === "number" && typeof arr[1] === "number") {
+          points.push(arr);
+          return;
+        }
+        arr.forEach(collect);
+      };
+      collect(geometry.coordinates);
+      if (!points.length) return null;
+
+      let lat = 0, lng = 0;
+      points.forEach(p => {
+        lng += Number(p[0]);
+        lat += Number(p[1]);
+      });
+      return [lat / points.length, lng / points.length];
     } catch {
       return null;
     }
   }
 
   function coverageTagName(area){
-    return area?.user_tag || area?.display_name || area?.user_email || area?.email || area?.tag || "Coverage";
+    return area?.user_tag || area?.display_name || area?.user_name || area?.username || area?.name || area?.user_email || area?.email || area?.tag || "Coverage";
   }
 
   function renderCoverage(){
@@ -338,7 +346,7 @@
     }).addTo(map);
 
     coverageTagLayer = L.layerGroup();
-    if (map.getZoom() >= Number(state.settings.zipZoom || 10)) {
+    if (map.getZoom() >= Math.max(8, Number(state.settings.zipZoom || 10) - 1)) {
       areas.forEach(a => {
         const center = coverageCenter(a.geometry);
         if (!center) return;
@@ -957,6 +965,8 @@
       user_id: currentUser?.id || null,
       user_email: currentUser?.email || "",
       user_tag: userCoverageTag(),
+      display_name: userCoverageTag(),
+      tag: userCoverageTag(),
       color: userCoverageColor(),
       team_id: team.id || "",
       team_color: team.color || userCoverageColor(),
@@ -1064,13 +1074,9 @@
   function openDrawingTools(){
     showSheet("Coverage Drawing", `
       <div class="card">
-        <h3>New Coverage Shape</h3>
-        <div class="status">Shapes auto-fill and save with your tag. Freehand stays above ZIP colors.</div>
-        <button id="drawFreehandBtn">Freehand</button>
-        <div class="compactGrid">
-          <button id="drawSquareBtn" class="secondary">Square</button>
-          <button id="drawCircleBtn" class="secondary">Circle</button>
-        </div>
+        <h3>Freehand Coverage</h3>
+        <div class="status">Draw a filled freehand area. It saves with your tag and color, then stays above ZIP fill colors.</div>
+        <button id="drawFreehandBtn">Start Freehand Drawing</button>
       </div>
 
       <div class="card">
@@ -1082,8 +1088,6 @@
     `);
 
     document.getElementById("drawFreehandBtn").onclick = startFreehandDrawingV2;
-    document.getElementById("drawSquareBtn").onclick = startSquareDrawing;
-    document.getElementById("drawCircleBtn").onclick = startCircleDrawing;
     document.getElementById("editCoverageModeBtn").onclick = () => {
       setEditCoverageMode(true);
       closeSheet();
