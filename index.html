@@ -1,272 +1,154 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>Territory Manager Community</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Territory Manager V2</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" href="icon-192.png">
 
-  <link rel="icon" type="image/png" href="favicon.png" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#9DE600" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="topbar">
-    <div class="brand">Territory Manager</div>
-    <button id="loginBtn" class="topBtn">Login</button>
-    <button id="adminBtn" class="topBtn hidden">Admin</button>
-    <button id="menuBtn" class="topBtn">Menu</button>
-  </div>
-
-  <div id="authPanel" class="panel left hidden">
-    <div class="panelHeader">
-      <button id="closeAuthBtn" class="closeBtn">Close</button>
-      <h2>Login</h2>
+  <header class="topbar">
+    <div>
+      <div class="app-title">Territory Manager</div>
+      <div class="version-pill">V2 Preview</div>
     </div>
-    <div class="panelBody">
+    <div class="top-actions">
+      <button id="accountBtn">Account</button>
+      <button id="adminBtn">Admin</button>
+      <button id="settingsBtn">Settings</button>
+    </div>
+  </header>
+
+  <main id="map"></main>
+
+  <button id="drawFab" class="fab draw">✎</button>
+  <button id="gpsFab" class="fab gps">◎</button>
+
+  <section id="bottomSheet" class="sheet hidden">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+      <h2 id="sheetTitle">Menu</h2>
+      <button id="closeSheetBtn" class="ghost">Close</button>
+    </div>
+    <div id="sheetBody" class="sheet-body"></div>
+  </section>
+
+  <template id="accountTemplate">
+    <div class="card">
       <label>Email</label>
-      <input id="emailInput" type="email" placeholder="name@email.com" />
+      <input id="emailInput" type="email" placeholder="email@example.com">
       <label>Password</label>
-      <input id="passwordInput" type="password" placeholder="Password" />
-      <button id="signInBtn">Sign In</button>
-      <button id="signUpBtn" class="secondary">Create Account</button>
-      <button id="resetPasswordBtn" class="secondary">Send Password Reset</button>
+      <input id="passwordInput" type="password" placeholder="password">
+      <div class="row">
+        <button id="signInBtn">Sign In</button>
+        <button id="signUpBtn" class="secondary">Create Account</button>
+      </div>
       <button id="signOutBtn" class="danger hidden">Sign Out</button>
-      <div id="authStatus" class="small"></div>
-
-      <div class="profileBox">
-        <h3>My Profile</h3>
-        <label>Display name / tag</label>
-        <input id="profileNameInput" type="text" placeholder="Example: Brandon">
-        <label>My drawing color</label>
-        <input id="profileColorInput" type="color" value="#22c55e">
-        <button id="saveProfileBtn" class="secondary">Save My Profile</button>
-        <div class="small">This name and color are used on freehand drawings.</div>
-      </div>
+      <div id="authStatus" class="status">Not signed in.</div>
     </div>
-  </div>
 
-  <div id="adminPanel" class="panel left hidden">
-    <div class="panelHeader">
-      <button id="closeAdminBtn" class="closeBtn">Close</button>
-      <h2>Admin Teams</h2>
+    <div class="card">
+      <h3>My Profile</h3>
+      <label>Display name / tag</label>
+      <input id="profileNameInput" type="text" placeholder="Example: Brandon">
+      <label>Drawing color</label>
+      <input id="profileColorInput" type="color" value="#22c55e">
+      <label>Team</label>
+      <select id="profileTeamInput"></select>
+      <button id="saveProfileBtn">Save Profile</button>
     </div>
-    <div class="panelBody">
-      <label>Number of teams</label>
-      <input id="teamCountInput" type="number" min="1" max="12" value="9" />
-      <button id="applyTeamCountBtn">Apply Team Count</button>
-      <div id="teamsEditor"></div>
+  </template>
 
-      <div class="adminUserBox">
-        <h3>User Password Reset</h3>
-        <div class="small">Admin tool: enter a user's email and send them a secure reset link.</div>
-        <label>User email</label>
-        <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
-        <label>Temporary password</label>
-        <input id="adminTempPasswordInput" type="text" value="Welcome123!" placeholder="Temporary password">
-        <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
-        <button id="adminSendResetBtn" class="secondary">Send Reset Email Instead</button>
-        <div id="adminResetStatus" class="small"></div>
-      </div>
-
-      <button id="saveTeamsBtn">Save Teams</button>
-
-      <div class="adminTimerBox">
-        <h3>Timer Settings</h3>
-        <label>Timer unit</label>
-        <select id="timeMode">
-          <option value="months">Months</option>
-          <option value="weeks">Weeks</option>
-          <option value="days">Days</option>
-        </select>
-        <label>Ready again after</label>
-        <input id="thresholdInput" type="number" min="1" max="365" value="3" />
-        <button id="saveTimerBtn" class="secondary">Save Timer Settings</button>
-        <div class="small">Admin only: this controls ZIP gradients and freehand drawing fade.</div>
-      </div>
-
-      <div class="small">Teams are stored locally until Supabase is configured. With Supabase, all users see the same teams.</div>
-    
-      <div class="adminUserBox">
-        <h3>App Users</h3>
-        <div class="small">Shows users saved in the app profile table. Use Refresh after new signups.</div>
-        <label>Search users</label>
-        <input id="adminUserSearchInput" type="text" placeholder="Search name or email">
-        <button id="refreshUsersBtn" class="secondary">Refresh Users</button>
-        <div id="adminUsersList" class="adminUsersList small">No users loaded yet.</div>
-      </div>
-
-    </div>
-  </div>
-
-  <div id="menuPanel" class="panel right hidden">
-    <div class="panelHeader">
-      <button id="closeMenuBtn" class="closeBtn">Close</button>
-      <h2>Menu</h2>
-    </div>
-    <div class="panelBody">
-      <details open>
-        <summary>Performance</summary>
-        <label>ZIP boundaries</label>
-        <select id="zipBoundaryMode">
-          <option value="auto">Auto: show only when zoomed in</option>
-          <option value="off">Off</option>
-          <option value="on">Always on</option>
-        </select>
-        <label>Show ZIP labels</label>
-        <select id="zipLabelsMode">
-          <option value="off">Off</option>
-          <option value="auto">Auto when close</option>
-          <option value="on">On</option>
-        </select>
-        <label>Full ZIP detail starts at zoom</label>
-        <input id="zipZoomInput" type="number" min="5" max="14" value="6" />
-        <button id="applyPerfBtn">Apply Performance Settings</button>
-      </details>
-
-
-      <details>
-        <summary>Location Settings</summary>
-        <div class="small">Use this to enable GPS and optionally share your live position with signed-in team members.</div>
-        <button id="enableLocationFromMenuBtn">Enable Location</button>
-        <button id="locateMeFromMenuBtn" class="secondary">Locate Me</button>
-        <button id="startTrackingFromMenuBtn" class="secondary">Start Live Tracking</button>
-        <button id="stopTrackingFromMenuBtn" class="danger">Stop Tracking</button>
-        <label>Share my location with team</label>
-        <select id="shareLocationMenuInput">
-          <option value="off">Off</option>
-          <option value="on">On</option>
-        </select>
-        <button id="saveLocationMenuSettingsBtn" class="secondary">Save Location Settings</button>
-        <div id="locationStatusMenu" class="small">Location not active.</div>
-      </details>
-
-
-
-
-      <details>
-        <summary>Coverage Drawing</summary>
-        <div class="small">Draw a freehand filled area to show exactly where someone knocked. It saves with your user color and ages with the timer.</div>
-        <label>My drawing color</label>
-        <input id="userColorInput" type="color" value="#22c55e" />
-        <button id="saveUserColorBtn">Save My Color</button>
-        <button id="startDrawBtn">Start Freehand Drawing</button>
-        <button id="finishDrawBtn" class="secondary">Done / Save Drawing</button>
-        <button id="cancelDrawBtn" class="danger">Cancel Drawing</button>
-        <div class="small">Tip: zoom in, tap Start, then trace the area with your finger. Tap Finish when done.</div>
-      </details>
-
-      <details>
-        <summary>Selected Area</summary>
-        <div id="selectedInfo" class="stats">Tap a ZIP when zoomed in.</div>
-      </details>
-
-      <details>
-        <summary>App Tools</summary>
-        <button id="reloadCloudBtn" class="secondary">Reload Cloud Data</button>
-        <button id="clearLocalCacheBtn" class="danger">Clear Local Cache</button>
-        <div id="appVersionText" class="small">Version 25</div>
-      </details>
-    </div>
-  </div>
-
-
-  <button id="drawFab" class="drawFab" title="Coverage Drawing">✎</button>
-
-  <div id="drawPanel" class="drawPanel hidden">
-    <div class="drawPanelHeader">
-      <strong>Coverage Drawing</strong>
-      <button id="closeDrawPanelBtn" class="miniBtn">×</button>
-    </div>
-    <label>My tag/name</label>
-    <input id="userTagInput" type="text" placeholder="Example: Brandon">
-    <label>My color</label>
-    <input id="userColorInputFab" type="color" value="#22c55e">
-    <button id="saveUserIdentityBtn">Save Tag + Color</button>
-
-    <details class="drawFilterBox">
-      <summary>Filter Drawings</summary>
-      <label>Show drawings</label>
-      <select id="coverageFilterMode">
-        <option value="all">All drawings</option>
-        <option value="mine">Only mine</option>
-        <option value="tag">By tag/name</option>
+  <template id="settingsTemplate">
+    <div class="card">
+      <h3>Map Performance</h3>
+      <label>Show ZIPs starting at zoom</label>
+      <input id="zipZoomInput" type="number" min="5" max="15" value="10">
+      <label>Show freehand coverage with ZIPs</label>
+      <select id="coverageZoomMode">
+        <option value="with_zips">With ZIP lines</option>
+        <option value="always">Always</option>
+        <option value="off">Off</option>
       </select>
-      <label>Tag/name filter</label>
-      <input id="coverageFilterTag" type="text" placeholder="Type a tag/name">
-      <button id="applyCoverageFilterBtn" class="secondary">Apply Filter</button>
-      <button id="clearCoverageFilterBtn" class="secondary">Clear Filter</button>
-    </details>
-
-    <button id="startDrawBtnFab">Start Drawing</button>
-    <button id="finishDrawBtnFab" class="secondary">Done / Save</button>
-    <button id="cancelDrawBtnFab" class="danger">Cancel</button>
-    <div class="small">On mobile: tap Start, then drag your finger on the map. Tap Finish when done.</div>
-  </div>
-
-  <button id="gpsFab" class="gpsFab" title="Location">◎</button>
-
-  <div id="gpsPanel" class="gpsPanel hidden">
-    <div class="drawPanelHeader">
-      <strong>Location</strong>
-      <button id="closeGpsPanelBtn" class="miniBtn">×</button>
+      <button id="saveSettingsBtn">Save Settings</button>
     </div>
-    <button id="enableLocationBtn">Enable Location</button>
-    <button id="locateMeBtn" class="secondary">Locate Me</button>
-    <button id="followMeBtn" class="secondary">Start Live Tracking</button>
-    <button id="stopFollowBtn" class="danger">Stop Tracking</button>
-    <button id="openLocationSettingsBtn" class="secondary">Open Location Settings</button>
-    <div id="locationStatus" class="small">Location not active.</div>
-  </div>
 
-  <div id="locationPromptModal" class="permissionModal hidden">
-    <div class="permissionCard">
-      <h2>Enable Location?</h2>
-      <p>Territory Manager can show where you are compared to ZIPs, freehand areas, and teammates.</p>
-      <button id="permissionEnableLocationBtn">Enable Location</button>
-      <button id="permissionNotNowBtn" class="secondary">Not Now</button>
-      <div class="small">You can turn this on later from Menu → Location Settings.</div>
+    <div class="card">
+      <h3>Location</h3>
+      <button id="enableLocationBtn">Enable Location</button>
+      <button id="locateMeBtn" class="secondary">Locate Me</button>
+      <button id="startTrackingBtn" class="secondary">Start Live Tracking</button>
+      <button id="stopTrackingBtn" class="danger">Stop Tracking</button>
+      <label>Share my live location</label>
+      <select id="shareLocationInput">
+        <option value="off">Off</option>
+        <option value="on">On</option>
+      </select>
+      <div id="locationStatus" class="status">Location not active.</div>
     </div>
-  </div>
 
-  <div id="passwordResetModal" class="permissionModal hidden">
-    <div class="permissionCard">
-      <h2>Set New Password</h2>
-      <p>Enter a new password for this account.</p>
-      <label>New password</label>
-      <input id="newPasswordInput" type="password" placeholder="New password">
-      <label>Confirm password</label>
-      <input id="confirmPasswordInput" type="password" placeholder="Confirm password">
-      <button id="saveNewPasswordBtn">Save New Password</button>
-      <button id="cancelNewPasswordBtn" class="secondary">Cancel</button>
-      <div id="passwordResetStatus" class="small"></div>
+    <div class="card">
+      <h3>Tools</h3>
+      <button id="reloadCloudBtn" class="secondary">Reload Cloud Data</button>
+      <button id="clearCacheBtn" class="danger">Clear Local Cache</button>
+      <div class="status">Version: V2 starter</div>
     </div>
-  </div>
+  </template>
 
-  <div id="forcePasswordChangeModal" class="permissionModal hidden">
-    <div class="permissionCard">
-      <h2>Change Required</h2>
-      <p>Your password was reset by an admin. Please choose a new password before using the map.</p>
-      <label>New password</label>
-      <input id="forcedNewPasswordInput" type="password" placeholder="New password">
-      <label>Confirm password</label>
-      <input id="forcedConfirmPasswordInput" type="password" placeholder="Confirm password">
-      <button id="forcedSavePasswordBtn">Save New Password</button>
-      <div id="forcedPasswordStatus" class="small"></div>
+  <template id="adminTemplate">
+    <div class="card">
+      <h3>Admin Center</h3>
+      <button id="refreshUsersBtn">Refresh Users</button>
+      <input id="userSearchInput" type="text" placeholder="Search users">
+      <div id="usersList" class="users-list">No users loaded.</div>
     </div>
-  </div>
 
-  <div id="map"></div>
+    <div class="card">
+      <h3>Teams</h3>
+      <div id="teamsEditor"></div>
+      <button id="saveTeamsBtn">Save Teams</button>
+    </div>
+
+    <div class="card">
+      <h3>Temporary Password</h3>
+      <label>User email</label>
+      <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
+      <label>Temporary password</label>
+      <input id="adminTempPasswordInput" type="text" value="Welcome123!">
+      <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
+      <div id="adminResetStatus" class="status"></div>
+    </div>
+  </template>
+
+  <template id="zipTemplate">
+    <div class="card">
+      <h3 id="zipTitle">ZIP</h3>
+      <div id="zipMeta" class="status"></div>
+      <button id="markTodayBtn">Mark Today</button>
+      <button id="markYesterdayBtn" class="secondary">Mark Yesterday</button>
+      <label>Custom date</label>
+      <input id="zipDateInput" type="date">
+      <button id="saveZipDateBtn">Save Date</button>
+      <label>Owner team</label>
+      <select id="zipOwnerTeamInput"></select>
+      <label>Pass to team</label>
+      <select id="zipHandoffTeamInput"></select>
+      <button id="saveZipTeamsBtn">Save Teams</button>
+      <label>Notes</label>
+      <textarea id="zipNotesInput" rows="3" placeholder="Notes for this ZIP"></textarea>
+      <button id="saveZipNotesBtn">Save Notes</button>
+    </div>
+  </template>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=30"></script>
-  <script src="bundle.js?v=30"></script>
+  <script src="config.js"></script>
+  <script type="module" src="src/app.js"></script>
 </body>
 </html>

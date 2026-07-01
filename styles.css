@@ -1,0 +1,63 @@
+*{box-sizing:border-box}
+:root{
+  --green:#9DE600;
+  --dark:#050505;
+  --panel:#ffffff;
+  --line:#d9efb1;
+}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial,Helvetica,sans-serif;background:#000;color:#000}
+.topbar{
+  position:fixed;top:0;left:0;right:0;height:76px;z-index:5000;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:calc(env(safe-area-inset-top,0px) + 8px) 14px 8px;
+  background:var(--green);box-shadow:0 2px 10px rgba(0,0,0,.2)
+}
+.app-title{font-size:22px;font-weight:900}
+.version-pill{display:inline-block;margin-top:3px;background:#111;color:var(--green);border-radius:999px;padding:2px 8px;font-size:11px;font-weight:900}
+.top-actions{display:flex;gap:8px}
+button{
+  border:0;border-radius:14px;background:var(--green);color:#000;
+  font-weight:900;font-size:16px;min-height:44px;padding:10px 14px;
+}
+.top-actions button,.ghost{background:#050505;color:var(--green)}
+.secondary{background:#edffd1}
+.danger{background:#ff5a70;color:white}
+.hidden{display:none!important}
+#map{position:fixed;top:76px;left:0;right:0;bottom:0;z-index:1}
+.fab{
+  position:fixed;right:18px;width:62px;height:62px;border-radius:999px;z-index:5500;
+  background:var(--green);border:4px solid #000;box-shadow:0 8px 24px rgba(0,0,0,.4);
+  font-size:28px;
+}
+.fab.draw{bottom:calc(24px + env(safe-area-inset-bottom,0px))}
+.fab.gps{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:8000;
+  max-height:82dvh;background:var(--panel);border-radius:24px 24px 0 0;
+  box-shadow:0 -12px 40px rgba(0,0,0,.4);overflow:hidden;
+}
+.sheet-handle{width:54px;height:5px;background:#c8c8c8;border-radius:99px;margin:10px auto}
+.sheet-header{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #e8e8e8}
+.sheet-header h2{margin:0;font-size:24px}
+.sheet-body{padding:12px;overflow:auto;max-height:calc(82dvh - 68px);-webkit-overflow-scrolling:touch}
+.card{border:1px solid var(--line);border-radius:18px;background:white;padding:12px;margin:10px 0}
+.card h3{margin:0 0 8px}
+label{display:block;font-weight:900;margin:10px 0 5px}
+input,select,textarea{
+  width:100%;border:1px solid #bfe58a;border-radius:14px;min-height:44px;
+  padding:9px 11px;font-size:16px;background:white;color:#000
+}
+textarea{resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.status{font-size:13px;color:#444;margin-top:8px;line-height:1.35}
+.users-list{margin-top:10px;border:1px solid #eef5e6;border-radius:14px;overflow:hidden}
+.user-row{padding:10px;border-bottom:1px solid #eef5e6}
+.user-row:last-child{border-bottom:0}
+.user-row strong{display:block}
+.badge{display:inline-block;border-radius:999px;padding:2px 7px;background:#f0ffd1;border:1px solid #d2f2a0;font-size:11px;font-weight:900;margin:4px 4px 0 0}
+.my-location-dot{width:18px;height:18px;border-radius:999px;background:#1976ff;border:3px solid white;box-shadow:0 0 0 5px rgba(25,118,255,.25)}
+.coverage-tag{background:#000;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:2px 7px;font-size:11px;font-weight:900}
+@media(max-width:480px){
+  .app-title{font-size:18px}
+  .top-actions button{font-size:13px;padding:8px 10px}
+}

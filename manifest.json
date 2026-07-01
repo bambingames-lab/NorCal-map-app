@@ -1,7 +1,7 @@
 {
-  "name": "Territory Manager",
-  "short_name": "TM",
-  "start_url": "./",
+  "name": "Territory Manager V2",
+  "short_name": "TM V2",
+  "start_url": "./?v=2",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#9DE600",
@@ -14,11 +14,6 @@
     {
       "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "apple-touch-icon.png",
-      "sizes": "180x180",
       "type": "image/png"
     }
   ]
