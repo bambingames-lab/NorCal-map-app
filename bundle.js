@@ -4,6 +4,10 @@
 
   const state = loadState();
   let map, zipData, zipLayer, coverageLayer, coverageTagLayer, myLocationMarker, watchId = null;
+  let drawingMode = null;
+  let drawingPoints = [];
+  let activeDrawLine = null;
+  let editCoverageMode = false;
   let currentUser = null;
   let isAdmin = false;
   let selectedZip = null;
@@ -85,7 +89,7 @@
     map.getPane("coveragePane").style.pointerEvents = "none";
 
     map.createPane("tagPane");
-    map.getPane("tagPane").style.zIndex = 680;
+    map.getPane("tagPane").style.zIndex = 700;
     map.getPane("tagPane").style.pointerEvents = "none";
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -94,9 +98,9 @@
 
     map.on("moveend zoomend", refreshMap);
 
-    // Desktop fallback: if pane/layer hit testing misses, still detect ZIP under cursor.
+    // Desktop fallback: ZIP clicks still work even when layers overlap.
     map.on("click", (e) => {
-      if (drawingMode) return;
+      if (drawingMode || editCoverageMode) return;
       if (!zipData || map.getZoom() < Number(state.settings.zipZoom || 10)) return;
       const zip = findZipAtLatLng(e.latlng);
       if (zip) openZipMenu(zip);
@@ -141,12 +145,6 @@
     return false;
   }
 
-  function setEditCoverageMode(on){
-    editCoverageMode = !!on;
-    document.body.classList.toggle("coverage-edit-mode", editCoverageMode);
-    refreshMap();
-  }
-
   function refreshMap(){
     renderZips();
     renderCoverage();
@@ -154,7 +152,6 @@
 
 
   function pointInRing(point, ring){
-    // point = [lng,lat], ring = [[lng,lat],...]
     let inside = false;
     const x = point[0], y = point[1];
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -180,12 +177,18 @@
 
   function findZipAtLatLng(latlng){
     if (!zipData || !zipData.features) return null;
-    const b = map.getBounds().pad(0.1);
-    const candidates = zipData.features.filter(f => featureInBounds(f, b));
+    const bounds = map.getBounds().pad(0.1);
+    const candidates = zipData.features.filter(f => featureInBounds(f, bounds));
     for (const f of candidates) {
       if (pointInPolygonGeometry(latlng, f.geometry)) return zipCode(f);
     }
     return null;
+  }
+
+  function setEditCoverageMode(on){
+    editCoverageMode = !!on;
+    document.body.classList.toggle("coverage-edit-mode", editCoverageMode);
+    refreshMap();
   }
 
   function renderZips(){
@@ -219,6 +222,66 @@
           if (e && e.originalEvent) L.DomEvent.stopPropagation(e);
           openZipMenu(zip);
         });
+      }
+    }).addTo(map);
+  }
+
+  function coverageCenter(geometry){
+    try {
+      const coords = geometry.coordinates.flat(2);
+      let lat = 0, lng = 0, count = 0;
+      for (const pair of coords) {
+        if (!Array.isArray(pair) || pair.length < 2) continue;
+        lng += Number(pair[0]);
+        lat += Number(pair[1]);
+        count++;
+      }
+      if (!count) return null;
+      return [lat / count, lng / count];
+    } catch {
+      return null;
+    }
+  }
+
+  function coverageTagName(area){
+    return area?.user_tag || area?.display_name || area?.user_email || area?.email || area?.tag || "Coverage";
+  }
+
+  function renderCoverage(){
+    if (coverageLayer) {
+      map.removeLayer(coverageLayer);
+      coverageLayer = null;
+    }
+    if (coverageTagLayer) {
+      map.removeLayer(coverageTagLayer);
+      coverageTagLayer = null;
+    }
+
+    const show = state.settings.coverageMode === "always" ||
+      (state.settings.coverageMode === "with_zips" && map.getZoom() >= Number(state.settings.zipZoom || 10));
+
+    if (!show) return;
+
+    const areas = Object.values(state.coverageAreas || {}).filter(a => a.geometry);
+    const features = areas.map(a => ({
+      type:"Feature",
+      properties:{ id:a.id },
+      geometry:a.geometry
+    }));
+
+    coverageLayer = L.geoJSON({ type:"FeatureCollection", features }, {
+      pane:"coveragePane",
+      interactive: editCoverageMode,
+      bubblingMouseEvents: false,
+      style: f => {
+        const a = state.coverageAreas[f.properties.id];
+        return {
+          color: a?.team_color || a?.color || "#22c55e",
+          weight: 3,
+          opacity: 1,
+          fillColor: a?.color || "#22c55e",
+          fillOpacity: 0.64
+        };
       },
       onEachFeature: (f, layer) => {
         if (!editCoverageMode) return;
@@ -226,6 +289,7 @@
           if (e && e.originalEvent) L.DomEvent.stopPropagation(e);
           const area = state.coverageAreas[f.properties.id];
           if (!area) return;
+
           showSheet("Edit Freehand Area", `
             <div class="card">
               <h3>${coverageTagName(area)}</h3>
@@ -272,67 +336,7 @@
         });
       }
     }).addTo(map);
-  }
 
-  function coverageCenter(geometry){
-    try {
-      const coords = geometry.coordinates.flat(2);
-      let lat = 0, lng = 0, count = 0;
-      for (const pair of coords) {
-        if (!Array.isArray(pair) || pair.length < 2) continue;
-        lng += Number(pair[0]);
-        lat += Number(pair[1]);
-        count++;
-      }
-      if (!count) return null;
-      return [lat / count, lng / count];
-    } catch {
-      return null;
-    }
-  }
-
-  function coverageTagName(area){
-    return area?.user_tag || area?.display_name || area?.user_email || area?.email || area?.tag || "Coverage";
-  }
-
-  function renderCoverage(){
-    if (coverageLayer) {
-      map.removeLayer(coverageLayer);
-      coverageLayer = null;
-    }
-    if (coverageTagLayer) {
-      map.removeLayer(coverageTagLayer);
-      coverageTagLayer = null;
-    }
-
-    const show = state.settings.coverageMode === "always" ||
-      (state.settings.coverageMode === "with_zips" && map.getZoom() >= Number(state.settings.zipZoom || 10));
-
-    if (!show) return;
-
-    const areas = Object.values(state.coverageAreas || {}).filter(a => a.geometry);
-
-    const features = areas.map(a => ({
-      type:"Feature",
-      properties:{ id:a.id },
-      geometry:a.geometry
-    }));
-
-    coverageLayer = L.geoJSON({ type:"FeatureCollection", features }, {
-      pane:"coveragePane",
-      style: f => {
-        const a = state.coverageAreas[f.properties.id];
-        return {
-          color: a?.team_color || a?.color || "#22c55e",
-          weight: 3,
-          opacity: 1,
-          fillColor: a?.color || "#22c55e",
-          fillOpacity: 0.62
-        };
-      }
-    }).addTo(map);
-
-    // Name tags above freehand drawings. Only show when close enough so the map stays clean.
     coverageTagLayer = L.layerGroup();
     if (map.getZoom() >= Number(state.settings.zipZoom || 10)) {
       areas.forEach(a => {
@@ -942,21 +946,24 @@
       geometry,
       updated_at: new Date().toISOString()
     };
+
     state.coverageAreas[id] = area;
     saveState();
     refreshMap();
+
     if (supabaseClient && currentUser) {
       const { error } = await supabaseClient.from("coverage_areas").upsert(area);
       if (error) return alert("Could not save drawing: " + error.message);
     }
+
     alert("Coverage shape saved.");
   }
 
   function startSquareDrawing(){
     setEditCoverageMode(false);
     closeSheet();
-    alert("Tap the center of the square coverage area.");
     drawingMode = "square";
+    alert("Tap the center of the square coverage area.");
     map.once("click", async e => {
       drawingMode = null;
       await saveCoverageGeometry(squareGeometry(e.latlng), "square");
@@ -966,8 +973,8 @@
   function startCircleDrawing(){
     setEditCoverageMode(false);
     closeSheet();
-    alert("Tap the center of the circle coverage area.");
     drawingMode = "circle";
+    alert("Tap the center of the circle coverage area.");
     map.once("click", async e => {
       drawingMode = null;
       await saveCoverageGeometry(circleGeometry(e.latlng), "circle");
@@ -1039,7 +1046,7 @@
     showSheet("Coverage Drawing", `
       <div class="card">
         <h3>New Coverage Shape</h3>
-        <div class="status">Shapes auto-fill and save. Freehand sits above ZIP colors.</div>
+        <div class="status">Shapes auto-fill and save with your tag. Freehand stays above ZIP colors.</div>
         <button id="drawFreehandBtn">Freehand</button>
         <div class="compactGrid">
           <button id="drawSquareBtn" class="secondary">Square</button>
@@ -1048,12 +1055,13 @@
       </div>
 
       <div class="card">
-        <h3>Edit Mode</h3>
+        <h3>Edit Existing Drawings</h3>
         <button id="editCoverageModeBtn">Edit Drawings Mode</button>
-        <button id="zipSelectModeBtn" class="secondary">ZIP Select Mode</button>
-        <div class="status">ZIP Select Mode lets ZIPs receive clicks. Edit Drawings Mode makes freehand areas clickable.</div>
+        <button id="zipModeBtn" class="secondary">ZIP Select Mode</button>
+        <div class="status">Edit mode makes freehand clickable. ZIP mode makes ZIPs clickable.</div>
       </div>
     `);
+
     document.getElementById("drawFreehandBtn").onclick = startFreehandDrawingV2;
     document.getElementById("drawSquareBtn").onclick = startSquareDrawing;
     document.getElementById("drawCircleBtn").onclick = startCircleDrawing;
@@ -1062,7 +1070,7 @@
       closeSheet();
       alert("Edit Drawings Mode on. Tap a freehand area to edit or delete it.");
     };
-    document.getElementById("zipSelectModeBtn").onclick = () => {
+    document.getElementById("zipModeBtn").onclick = () => {
       setEditCoverageMode(false);
       closeSheet();
       alert("ZIP Select Mode on. Tap ZIPs to mark dates.");

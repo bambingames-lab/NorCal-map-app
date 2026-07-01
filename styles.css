@@ -364,64 +364,7 @@ button{
 }
 
 
-/* Freehand tags above coverage */
-.coverageTag{
-  display:inline-block;
-  transform:translate(-50%, -115%);
-  background:#050505;
-  color:#9DE600;
-  border:2px solid #9DE600;
-  border-radius:999px;
-  padding:3px 9px;
-  font-size:12px;
-  font-weight:900;
-  white-space:nowrap;
-  box-shadow:0 3px 12px rgba(0,0,0,.35);
-  pointer-events:none;
-}
-
-
-/* V2 interaction fix */
-.coverageTag{
-  pointer-events:none!important;
-}
-.leaflet-pane.coveragePane path{
-  pointer-events:none;
-}
-body.coverage-edit-mode .leaflet-pane.coveragePane path{
-  pointer-events:auto;
-}
-
-
-/* ZIP click + drawing V2 fix */
-.leaflet-coverage-pane,
-.leaflet-coverage-pane svg,
-.leaflet-coverage-pane canvas,
-.leaflet-coverage-pane path{
-  pointer-events:none!important;
-}
-.coverageTag{
-  pointer-events:none!important;
-}
-
-
-/* Desktop ZIP click + drawing button fix */
-.leaflet-coverage-pane,
-.leaflet-coverage-pane *,
-.leaflet-tag-pane,
-.leaflet-tag-pane *{
-  pointer-events:none!important;
-}
-.leaflet-zip-pane,
-.leaflet-zip-pane *{
-  pointer-events:auto!important;
-}
-.coverageTag{
-  pointer-events:none!important;
-}
-
-
-/* Freehand above ZIP colors, editable only in Edit Drawings Mode */
+/* Stable V2 freehand layer rules */
 .leaflet-coverage-pane{
   z-index:560!important;
   pointer-events:none!important;
@@ -447,5 +390,16 @@ body.coverage-edit-mode .leaflet-coverage-pane *{
   pointer-events:none!important;
 }
 .coverageTag{
+  display:inline-block;
+  transform:translate(-50%, -115%);
+  background:#050505;
+  color:#9DE600;
+  border:2px solid #9DE600;
+  border-radius:999px;
+  padding:3px 9px;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+  box-shadow:0 3px 12px rgba(0,0,0,.35);
   pointer-events:none!important;
 }
