@@ -152,8 +152,8 @@
           color: selectedZip === zip ? "#2563eb" : "#000",
           weight: selectedZip === zip ? 2.3 : (map.getZoom() >= 12 ? 1.4 : 0.85),
           opacity: 1,
-          fillColor: t?.last_worked ? "#9DE600" : "transparent",
-          fillOpacity: t?.last_worked ? 0.35 : 0.01,
+          fillColor: t?.last_worked ? territoryTeamColor(zip) : "transparent",
+          fillOpacity: t?.last_worked ? 0.62 : 0.01,
           interactive: true
         };
       },
@@ -187,7 +187,7 @@
           color: a?.team_color || a?.color || "#22c55e",
           weight: 2,
           fillColor: a?.color || "#22c55e",
-          fillOpacity: 0.35
+          fillOpacity: 0.58
         };
       }
     }).addTo(map);
@@ -271,6 +271,17 @@
     return state.teams.map(t => `<option value="${t.id}" ${selected === t.id ? "selected" : ""}>${t.name}</option>`).join("");
   }
 
+  function teamById(id){
+    return state.teams.find(t => t.id === id) || null;
+  }
+
+  function territoryTeamColor(zip){
+    const t = state.territories[zip] || {};
+    const team = teamById(t.owner_team_id || t.team_id || t.handoff_team_id);
+    return team?.color || "#9DE600";
+  }
+
+
   function openZipMenu(zip){
     selectedZip = zip;
     const t = state.territories[zip] || {};
@@ -278,13 +289,15 @@
       <div class="card">
         <h3>ZIP ${zip}</h3>
         <div class="status" id="zipStatus">Last worked: ${t.last_worked || "Not set"}</div>
-        <div class="row">
+        <div class="compactGrid">
           <button id="markTodayBtn">Today</button>
           <button id="markYesterdayBtn" class="secondary">Yesterday</button>
         </div>
         <label>Past/custom date</label>
-        <input id="zipDateInput" type="date" value="${t.last_worked || ""}">
-        <button id="saveZipDateBtn">Save Date</button>
+        <div class="compactGrid">
+          <input id="zipDateInput" type="date" value="${t.last_worked || ""}">
+          <button id="saveZipDateBtn">Save Date</button>
+        </div>
 
         <label>Owner team</label>
         <select id="ownerTeamInput">${teamOptions(t.owner_team_id || state.teams[0]?.id)}</select>
@@ -417,9 +430,11 @@
 
       <div class="card">
         <h3>Location</h3>
-        <button id="enableLocationBtn">Enable Location</button>
-        <button id="startTrackingBtn" class="secondary">Start Live Tracking</button>
-        <button id="stopTrackingBtn" class="danger">Stop Tracking</button>
+        <div class="compactGrid">
+          <button id="enableLocationBtn">Enable Location</button>
+          <button id="startTrackingBtn" class="secondary">Start Tracking</button>
+          <button id="stopTrackingBtn" class="danger">Stop Tracking</button>
+        </div>
         <label>Share my location</label>
         <select id="shareLocationInput">
           <option value="off" ${state.settings.shareLocation === "off" ? "selected" : ""}>Off</option>
@@ -432,7 +447,7 @@
         <h3>App Tools</h3>
         <button id="reloadCloudBtn" class="secondary">Reload Cloud Data</button>
         <button id="clearCacheBtn" class="danger">Clear Local Cache</button>
-        <div class="status">V2 fixed preview</div>
+        <div class="status">V2 UI cleanup preview</div>
       </div>
     `);
 
@@ -532,35 +547,86 @@
 
   async function openAdmin(){
     showSheet("Admin Center", `
-      <div class="card">
-        <h3>Users</h3>
-        <input id="userSearchInput" placeholder="Search users">
-        <button id="refreshUsersBtn">Refresh Users</button>
-        <div id="usersList" class="status">No users loaded.</div>
+      <div class="miniTabs">
+        <button id="adminUsersTab" class="active">Users</button>
+        <button id="adminPasswordTab">Passwords</button>
+        <button id="adminTeamsTab">Teams</button>
+        <button id="adminReportsTab">Reports</button>
       </div>
 
-      <div class="card">
-        <h3>Temporary Password</h3>
-        <label>User email</label>
-        <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
-        <label>Temporary password</label>
-        <input id="adminTempPasswordInput" value="Welcome123!">
-        <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
-        <div id="adminResetStatus" class="status"></div>
+      <div id="adminUsersSection" class="adminPanelSection active">
+        <div class="card">
+          <h3>Users</h3>
+          <input id="userSearchInput" placeholder="Search users">
+          <button id="refreshUsersBtn">Refresh Users</button>
+          <div id="usersList" class="status">No users loaded.</div>
+        </div>
       </div>
 
-      <div class="card">
-        <h3>Teams</h3>
-        <div id="teamsEditor"></div>
-        <button id="saveTeamsBtn">Save Teams</button>
+      <div id="adminPasswordSection" class="adminPanelSection">
+        <div class="card">
+          <h3>Temporary Password</h3>
+          <label>User email</label>
+          <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
+          <label>Temporary password</label>
+          <input id="adminTempPasswordInput" value="Welcome123!">
+          <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
+          <div id="adminResetStatus" class="status"></div>
+        </div>
+      </div>
+
+      <div id="adminTeamsSection" class="adminPanelSection">
+        <div class="card">
+          <h3>Teams</h3>
+          <div id="teamsEditor"></div>
+          <button id="saveTeamsBtn">Save Teams</button>
+        </div>
+      </div>
+
+      <div id="adminReportsSection" class="adminPanelSection">
+        <div class="card">
+          <h3>Quick Reports</h3>
+          <div id="adminReportsBox" class="status">Loading report...</div>
+          <button id="refreshReportsBtn" class="secondary">Refresh Report</button>
+        </div>
       </div>
     `);
+
+    const activate = (name) => {
+      ["Users","Password","Teams","Reports"].forEach(n => {
+        const btn = document.getElementById("admin" + n + "Tab");
+        const sec = document.getElementById("admin" + n + "Section");
+        if (btn) btn.classList.toggle("active", n === name);
+        if (sec) sec.classList.toggle("active", n === name);
+      });
+    };
+
+    document.getElementById("adminUsersTab").onclick = () => activate("Users");
+    document.getElementById("adminPasswordTab").onclick = () => activate("Password");
+    document.getElementById("adminTeamsTab").onclick = () => activate("Teams");
+    document.getElementById("adminReportsTab").onclick = () => { activate("Reports"); renderAdminReport(); };
 
     document.getElementById("refreshUsersBtn").onclick = loadUsers;
     document.getElementById("userSearchInput").oninput = renderUsers;
     document.getElementById("adminSetTempPasswordBtn").onclick = setTemporaryPassword;
+    document.getElementById("refreshReportsBtn").onclick = renderAdminReport;
     renderTeams();
     document.getElementById("saveTeamsBtn").onclick = saveTeams;
+  }
+
+  function renderAdminReport(){
+    const el = document.getElementById("adminReportsBox");
+    if (!el) return;
+    const territories = Object.values(state.territories || {});
+    const worked = territories.filter(t => t.last_worked).length;
+    const coverage = Object.values(state.coverageAreas || {}).length;
+    const users = (state.users || []).length;
+    el.innerHTML = `
+      <div><strong>Worked ZIPs:</strong> ${worked}</div>
+      <div><strong>Freehand areas:</strong> ${coverage}</div>
+      <div><strong>Loaded users:</strong> ${users}</div>
+      <div><strong>Teams:</strong> ${state.teams.length}</div>
+    `;
   }
 
   async function loadUsers(){
@@ -590,7 +656,7 @@
         <span class="badge">${u.role || "user"}</span>
         <span class="badge">${u.is_active === false ? "Inactive" : "Active"}</span>
         ${u.must_change_password ? '<span class="badge">Must change password</span>' : ""}
-        <button class="secondary" onclick="document.getElementById('adminResetEmailInput').value='${u.email || ""}'">Use Email</button>
+        <button class="secondary" onclick="document.getElementById('adminResetEmailInput').value='${u.email || ""}';document.getElementById('adminPasswordTab').click();">Reset Password</button>
       </div>
     `).join("");
   }
@@ -599,6 +665,7 @@
     const el = document.getElementById("teamsEditor");
     el.innerHTML = state.teams.map(t => `
       <div class="card">
+        <h3><span class="teamColorPill" style="background:${t.color}"></span>${t.name}</h3>
         <label>${t.id} name</label>
         <input id="teamName_${t.id}" value="${t.name}">
         <label>${t.id} color</label>

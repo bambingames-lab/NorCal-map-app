@@ -198,3 +198,167 @@ textarea{resize:vertical}
   .topActions{gap:5px}
   .topActions button{font-size:13px;padding:9px 10px}
 }
+
+
+/* V2 UI cleanup pass */
+.topbar{
+  height:72px;
+  padding:calc(env(safe-area-inset-top,0px) + 7px) 10px 7px;
+}
+#map{
+  top:72px;
+}
+.brand{
+  font-size:20px;
+}
+.version{
+  font-size:10px;
+  padding:2px 8px;
+  margin-top:5px;
+}
+.topActions{
+  gap:6px;
+}
+.topActions button{
+  min-height:38px;
+  border-radius:14px;
+  font-size:14px;
+  padding:8px 11px;
+}
+.sheet{
+  max-height:72dvh;
+  border-radius:22px 22px 0 0;
+}
+.sheet.compact{
+  max-height:58dvh;
+}
+.sheetHead{
+  padding:6px 12px 9px;
+}
+.sheetHead h2{
+  font-size:20px;
+}
+.handle{
+  margin:8px auto 3px;
+}
+.sheetBody{
+  padding:8px 10px 12px;
+  max-height:calc(72dvh - 60px);
+}
+.card{
+  border-radius:15px;
+  padding:10px;
+  margin:7px 0;
+}
+.card h3{
+  font-size:16px;
+  margin-bottom:6px;
+}
+label{
+  font-size:14px;
+  margin:7px 0 4px;
+}
+input,select,textarea{
+  min-height:39px;
+  border-radius:12px;
+  padding:7px 10px;
+  font-size:15px;
+}
+button{
+  min-height:40px;
+  border-radius:13px;
+  font-size:15px;
+  padding:8px 12px;
+}
+.status{
+  font-size:12px;
+}
+.compactGrid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+.compactGrid button,
+.compactGrid input,
+.compactGrid select{
+  width:100%;
+}
+.miniTabs{
+  display:flex;
+  gap:6px;
+  overflow-x:auto;
+  padding:2px 0 8px;
+}
+.miniTabs button{
+  white-space:nowrap;
+  min-height:36px;
+  font-size:13px;
+  padding:7px 10px;
+  background:#edfdd1;
+}
+.miniTabs button.active{
+  background:#000;
+  color:#9DE600;
+}
+.adminPanelSection{
+  display:none;
+}
+.adminPanelSection.active{
+  display:block;
+}
+.teamColorPill{
+  display:inline-block;
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  border:2px solid #000;
+  vertical-align:middle;
+  margin-right:6px;
+}
+.userRow{
+  padding:8px;
+}
+.userRow button{
+  min-height:34px;
+  font-size:12px;
+  padding:6px 8px;
+  margin-top:5px;
+}
+.fab{
+  width:58px;
+  height:58px;
+  right:14px;
+}
+.fab span{
+  font-size:27px;
+}
+.leaflet-control-zoom a{
+  width:32px!important;
+  height:32px!important;
+  line-height:32px!important;
+}
+@media(max-width:520px){
+  .topbar{
+    height:70px;
+  }
+  #map{
+    top:70px;
+  }
+  .brand{
+    font-size:17px;
+  }
+  .topActions button{
+    font-size:12px;
+    padding:7px 8px;
+    min-height:36px;
+  }
+  .sheet{
+    max-height:70dvh;
+  }
+  .sheetBody{
+    max-height:calc(70dvh - 58px);
+  }
+  .compactGrid{
+    grid-template-columns:1fr;
+  }
+}
