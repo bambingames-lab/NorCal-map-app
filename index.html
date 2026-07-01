@@ -4,151 +4,48 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Territory Manager V2</title>
-
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="icon-192.png">
-
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <div class="app-title">Territory Manager</div>
-      <div class="version-pill">V2 Preview</div>
+    <div class="brandWrap">
+      <div class="brand">Territory Manager</div>
+      <div class="version">V2 Preview</div>
     </div>
-    <div class="top-actions">
+    <nav class="topActions">
       <button id="accountBtn">Account</button>
       <button id="adminBtn">Admin</button>
       <button id="settingsBtn">Settings</button>
-    </div>
+    </nav>
   </header>
 
   <main id="map"></main>
 
-  <button id="drawFab" class="fab draw">✎</button>
-  <button id="gpsFab" class="fab gps">◎</button>
+  <button id="gpsFab" class="fab gps" aria-label="Location">
+    <span>◎</span>
+  </button>
+  <button id="drawFab" class="fab draw" aria-label="Draw">
+    <span>✎</span>
+  </button>
 
-  <section id="bottomSheet" class="sheet hidden">
-    <div class="sheet-handle"></div>
-    <div class="sheet-header">
+  <section id="sheet" class="sheet hidden">
+    <div class="handle"></div>
+    <div class="sheetHead">
       <h2 id="sheetTitle">Menu</h2>
-      <button id="closeSheetBtn" class="ghost">Close</button>
+      <button id="closeSheetBtn" class="blackBtn">Close</button>
     </div>
-    <div id="sheetBody" class="sheet-body"></div>
+    <div id="sheetBody" class="sheetBody"></div>
   </section>
 
-  <template id="accountTemplate">
-    <div class="card">
-      <label>Email</label>
-      <input id="emailInput" type="email" placeholder="email@example.com">
-      <label>Password</label>
-      <input id="passwordInput" type="password" placeholder="password">
-      <div class="row">
-        <button id="signInBtn">Sign In</button>
-        <button id="signUpBtn" class="secondary">Create Account</button>
-      </div>
-      <button id="signOutBtn" class="danger hidden">Sign Out</button>
-      <div id="authStatus" class="status">Not signed in.</div>
-    </div>
-
-    <div class="card">
-      <h3>My Profile</h3>
-      <label>Display name / tag</label>
-      <input id="profileNameInput" type="text" placeholder="Example: Brandon">
-      <label>Drawing color</label>
-      <input id="profileColorInput" type="color" value="#22c55e">
-      <label>Team</label>
-      <select id="profileTeamInput"></select>
-      <button id="saveProfileBtn">Save Profile</button>
-    </div>
-  </template>
-
-  <template id="settingsTemplate">
-    <div class="card">
-      <h3>Map Performance</h3>
-      <label>Show ZIPs starting at zoom</label>
-      <input id="zipZoomInput" type="number" min="5" max="15" value="10">
-      <label>Show freehand coverage with ZIPs</label>
-      <select id="coverageZoomMode">
-        <option value="with_zips">With ZIP lines</option>
-        <option value="always">Always</option>
-        <option value="off">Off</option>
-      </select>
-      <button id="saveSettingsBtn">Save Settings</button>
-    </div>
-
-    <div class="card">
-      <h3>Location</h3>
-      <button id="enableLocationBtn">Enable Location</button>
-      <button id="locateMeBtn" class="secondary">Locate Me</button>
-      <button id="startTrackingBtn" class="secondary">Start Live Tracking</button>
-      <button id="stopTrackingBtn" class="danger">Stop Tracking</button>
-      <label>Share my live location</label>
-      <select id="shareLocationInput">
-        <option value="off">Off</option>
-        <option value="on">On</option>
-      </select>
-      <div id="locationStatus" class="status">Location not active.</div>
-    </div>
-
-    <div class="card">
-      <h3>Tools</h3>
-      <button id="reloadCloudBtn" class="secondary">Reload Cloud Data</button>
-      <button id="clearCacheBtn" class="danger">Clear Local Cache</button>
-      <div class="status">Version: V2 starter</div>
-    </div>
-  </template>
-
-  <template id="adminTemplate">
-    <div class="card">
-      <h3>Admin Center</h3>
-      <button id="refreshUsersBtn">Refresh Users</button>
-      <input id="userSearchInput" type="text" placeholder="Search users">
-      <div id="usersList" class="users-list">No users loaded.</div>
-    </div>
-
-    <div class="card">
-      <h3>Teams</h3>
-      <div id="teamsEditor"></div>
-      <button id="saveTeamsBtn">Save Teams</button>
-    </div>
-
-    <div class="card">
-      <h3>Temporary Password</h3>
-      <label>User email</label>
-      <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
-      <label>Temporary password</label>
-      <input id="adminTempPasswordInput" type="text" value="Welcome123!">
-      <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
-      <div id="adminResetStatus" class="status"></div>
-    </div>
-  </template>
-
-  <template id="zipTemplate">
-    <div class="card">
-      <h3 id="zipTitle">ZIP</h3>
-      <div id="zipMeta" class="status"></div>
-      <button id="markTodayBtn">Mark Today</button>
-      <button id="markYesterdayBtn" class="secondary">Mark Yesterday</button>
-      <label>Custom date</label>
-      <input id="zipDateInput" type="date">
-      <button id="saveZipDateBtn">Save Date</button>
-      <label>Owner team</label>
-      <select id="zipOwnerTeamInput"></select>
-      <label>Pass to team</label>
-      <select id="zipHandoffTeamInput"></select>
-      <button id="saveZipTeamsBtn">Save Teams</button>
-      <label>Notes</label>
-      <textarea id="zipNotesInput" rows="3" placeholder="Notes for this ZIP"></textarea>
-      <button id="saveZipNotesBtn">Save Notes</button>
-    </div>
-  </template>
+  <div id="loadingBox" class="loadingBox">Loading map…</div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
-  <script type="module" src="src/app.js"></script>
+  <script src="config.js?v=2"></script>
+  <script src="bundle.js?v=2"></script>
 </body>
 </html>

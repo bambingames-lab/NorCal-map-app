@@ -1,2108 +1,690 @@
-/* Territory Manager Community Starter
-   GitHub Pages frontend + optional Supabase backend.
-*/
-const ZIP_URLS = [
-  "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json",
-  "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json?cacheBust=1"
-];
-const STORAGE_KEY = "tm-community-state-v1";
-
-const defaultState = {
-  teams: [
-    { id: "team1", name: "Team 1", color: "#2563eb" },
-    { id: "team2", name: "Team 2", color: "#9333ea" },
-    { id: "team3", name: "Team 3", color: "#ec4899" },
-    { id: "team4", name: "Team 4", color: "#0f766e" },
-    { id: "team5", name: "Team 5", color: "#f59e0b" },
-    { id: "team6", name: "Team 6", color: "#22c55e" }
-  ],
-  territories: {},
-  coverageAreas: {},
-  settings: {
-    boundaryMode: "auto",
-    labelsMode: "off",
-    zipZoom: 9,
-    timeMode: "months",
-    threshold: 3,
-    userColor: "#22c55e",
-    userTag: "",
-    coverageFilterMode: "all",
-    coverageFilterTag: "",
-    shareLocation: "off"
-  }
-};
-
-let state = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || structuredClone(defaultState);
-let currentUser = null;
-let isAdmin = false;
-let supabaseClient = null;
-let zipData = null;
-let zipLayer = null;
-let coverageLayer = null;
-let coverageTagLayer = null;
-let activeDrawingLayer = null;
-let myLocationMarker = null;
-let myAccuracyCircle = null;
-let locationWatchId = null;
-let teamLocationLayer = null;
-let teamLocationRefreshTimer = null;
-let selectedZip = null;
-let selectedCoverageId = null;
-let renderTimer = null;
-let coverageSyncTimer = null;
-let isDrawing = false;
-let drawingPoints = [];
-let editingCoverageId = null;
-let isPointerDrawing = false;
-let zipPopupOpen = false;
-
-const hasSupabase = Boolean(window.TM_SUPABASE_URL && window.TM_SUPABASE_ANON_KEY);
-
-if (hasSupabase && window.supabase) {
-  supabaseClient = window.supabase.createClient(window.TM_SUPABASE_URL, window.TM_SUPABASE_ANON_KEY);
-}
-
-const map = L.map("map", { preferCanvas: true }).setView([38.8, -121.3], 7);
-
-// Dedicated panes keep ZIPs and freehand coverage from fighting each other.
-map.createPane("coveragePane");
-map.getPane("coveragePane").style.zIndex = 390;
-map.getPane("coveragePane").style.pointerEvents = "auto";
-
-map.createPane("zipPane");
-map.getPane("zipPane").style.zIndex = 470;
-map.getPane("zipPane").style.pointerEvents = "auto";
-
-map.createPane("tagPane");
-map.getPane("tagPane").style.zIndex = 650;
-map.getPane("tagPane").style.pointerEvents = "auto";
-
-const canvasRenderer = L.canvas({ padding: 0.5 });
-const zipRenderer = L.canvas({ padding: 0.5, pane: "zipPane" });
-const coverageRenderer = L.canvas({ padding: 0.5, pane: "coveragePane" });
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "&copy; OpenStreetMap contributors"
-}).addTo(map);
-
-function saveLocal() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
-
-function ensureZipLineSettings() {
-  state.settings = state.settings || {};
-  if (!state.settings.boundaryMode || state.settings.boundaryMode === "on") state.settings.boundaryMode = "auto";
-  if (!state.settings.zipZoom) state.settings.zipZoom = 9;
-  if (!state.settings.labelsMode) state.settings.labelsMode = "off";
-}
-ensureZipLineSettings();
-
-
-function teamById(id) {
-  return state.teams.find(t => t.id === id) || state.teams[0];
-}
-
-function hexToRgb(hex) {
-  const n = parseInt(String(hex || "#000000").replace("#", ""), 16);
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
-}
-function rgbToHex(r,g,b) {
-  const h = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
-  return "#" + h(r) + h(g) + h(b);
-}
-function mix(a,b,t) {
-  const x = hexToRgb(a), y = hexToRgb(b);
-  return rgbToHex(x.r+(y.r-x.r)*t, x.g+(y.g-x.g)*t, x.b+(y.b-x.b)*t);
-}
-
-function ensureCoverageState() {
-  state.coverageAreas = state.coverageAreas || {};
-  state.settings = state.settings || {};
-  state.settings.userColor = state.settings.userColor || "#22c55e";
-  state.settings.userTag = state.settings.userTag || "";
-  state.settings.coverageFilterMode = state.settings.coverageFilterMode || "all";
-  state.settings.coverageFilterTag = state.settings.coverageFilterTag || "";
-}
-ensureCoverageState();
-
-function coverageColor(area) {
-  const base = area.color || "#22c55e";
-  if (!area.last_worked) return base;
-  const pct = Math.max(0, Math.min(1, elapsedUnits(area.last_worked) / Number(state.settings.threshold || 3)));
-  // As the area ages, it fades toward black using the same timer as ZIPs.
-  return mix(base, "#000000", pct);
-}
-
-function coverageOpacity(area) {
-  if (!area.last_worked) return 0.28;
-  const pct = Math.max(0, Math.min(1, elapsedUnits(area.last_worked) / Number(state.settings.threshold || 3)));
-  return 0.62 - (pct * 0.18);
-}
-
-function userDisplayName() {
-  return state.settings.userTag || currentUser?.email || "Local user";
-}
-
-async function saveUserProfile() {
-  ensureCoverageState();
-
-  const nameEl = document.getElementById("profileNameInput") || document.getElementById("userTagInput");
-  const colorEl = document.getElementById("profileColorInput") || document.getElementById("userColorInputFab");
-
-  const displayName = nameEl ? nameEl.value.trim() : "";
-  const color = colorEl ? colorEl.value : "#22c55e";
-
-  state.settings.userTag = displayName || state.settings.userTag || currentUser?.email || "User";
-  state.settings.userColor = color || state.settings.userColor || "#22c55e";
-  saveLocal();
-
-  syncProfileInputs();
-
-  // Make existing drawings by this account match the account settings.
-  state.coverageAreas = state.coverageAreas || {};
-  Object.values(state.coverageAreas).forEach(area => {
-    if (!area) return;
-    const belongsToUser = currentUser
-      ? (area.user_id === currentUser.id || area.user_email === currentUser.email)
-      : (area.user_email === state.settings.userTag || area.user_tag === state.settings.userTag);
-    if (belongsToUser) {
-      area.user_tag = state.settings.userTag;
-      area.color = state.settings.userColor;
-      area.user_email = currentUser?.email || area.user_email || state.settings.userTag;
-    }
-  });
-  saveLocal();
-  renderCoverageAreas();
-
-  if (supabaseClient && currentUser) {
-    await supabaseClient.from("user_profiles").upsert({
-      user_id: currentUser.id,
-      email: currentUser.email,
-      display_name: state.settings.userTag,
-      color: state.settings.userColor,
-      updated_at: new Date().toISOString()
-    });
-
-    await supabaseClient
-      .from("coverage_areas")
-      .update({
-        user_tag: state.settings.userTag,
-        color: state.settings.userColor,
-        updated_at: new Date().toISOString()
-      })
-      .eq("user_id", currentUser.id);
-  }
-
-  alert("Profile saved. Your existing drawings now match this name/color.");
-}
-
-function syncProfileInputs() {
-  const ids = ["profileNameInput", "userTagInput"];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = state.settings.userTag || "";
-  });
-
-  const colorIds = ["profileColorInput", "userColorInputFab", "userColorInput"];
-  colorIds.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.value = state.settings.userColor || "#22c55e";
-  });
-}
-
-async function loadUserProfile() {
-  if (!supabaseClient || !currentUser) {
-    syncProfileInputs();
-    return;
-  }
-
-  const { data } = await supabaseClient
-    .from("user_profiles")
-    .select("*")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
-
-  if (data) {
-    state.settings.userTag = data.display_name || state.settings.userTag || currentUser.email;
-    state.settings.userColor = data.color || state.settings.userColor || "#22c55e";
-    saveLocal();
-  } else if (!state.settings.userTag) {
-    state.settings.userTag = currentUser.email;
-    saveLocal();
-  }
-
-  syncProfileInputs();
-}
-
-function coveragePassesFilter(area) {
-  const mode = state.settings.coverageFilterMode || "all";
-  const tag = String(state.settings.coverageFilterTag || "").trim().toLowerCase();
-
-  if (mode === "all") return true;
-
-  if (mode === "mine") {
-    if (!currentUser) return area.user_email === state.settings.userTag || area.user_tag === state.settings.userTag;
-    return area.user_id === currentUser.id || area.user_email === currentUser.email;
-  }
-
-  if (mode === "tag") {
-    if (!tag) return true;
-    const combined = `${area.user_tag || ""} ${area.user_email || ""}`.toLowerCase();
-    return combined.includes(tag);
-  }
-
-  return true;
-}
-
-
-function normalizeCoverageArea(row, previous = {}) {
-  if (!row || !row.id) return null;
-
-  const userEmail = row.user_email || previous.user_email || "";
-  const fallbackTag =
-    row.user_tag ||
-    previous.user_tag ||
-    userEmail ||
-    state.settings.userTag ||
-    "Coverage";
-
-  return {
-    id: row.id,
-    zip: row.zip || previous.zip || null,
-    user_id: row.user_id || previous.user_id || null,
-    user_email: userEmail,
-    user_tag: fallbackTag,
-    color: row.color || previous.color || "#22c55e",
-    last_worked: row.last_worked || previous.last_worked || null,
-    geometry: row.geometry || previous.geometry
-  };
-}
-
-function elapsedUnits(dateStr) {
-  if (!dateStr) return 0;
-  const days = Math.max(0, (Date.now() - new Date(dateStr + "T00:00:00").getTime()) / 86400000);
-  if (state.settings.timeMode === "days") return days;
-  if (state.settings.timeMode === "weeks") return days / 7;
-  return days / 30.4375;
-}
-function territoryColor(zip) {
-  const t = state.territories[zip];
-  if (!t || !t.last_worked) return "transparent";
-  const owner = teamById(t.owner_team_id || state.teams[0].id);
-  const handoff = teamById(t.handoff_team_id || state.teams[Math.min(1,state.teams.length-1)].id);
-  const pct = Math.max(0, Math.min(1, elapsedUnits(t.last_worked) / Number(state.settings.threshold || 3)));
-  return mix(owner.color, handoff.color, pct);
-}
-function zipCode(f) {
-  const p = f.properties || {};
-  return String(p.ZCTA5CE10 || p.ZCTA5CE20 || p.zip_code || p.ZIP_CODE || p.zip || p.name || "");
-}
-function featureInBounds(feature, bounds) {
-  try {
-    return bounds.intersects(L.geoJSON(feature).getBounds());
-  } catch {
-    return false;
-  }
-}
-function shouldShowMapWorkLayers() {
-  ensureZipLineSettings();
-  if (state.settings.boundaryMode === "off") return false;
-  const minZoom = Number(state.settings.zipZoom || 9);
-  return map.getZoom() >= minZoom;
-}
-
-function shouldShowZips() {
-  return shouldShowMapWorkLayers();
-}
-function zipStyle(feature) {
-  const zip = zipCode(feature);
-  const zoom = map.getZoom();
-  const selected = selectedZip === zip;
-  let weight = zoom <= 8 ? 0.55 : zoom <= 10 ? 0.95 : zoom <= 12 ? 1.35 : 1.8;
-  return {
-    pane: "zipPane",
-    renderer: zipRenderer,
-    color: selected ? "#2563eb" : "#000",
-    weight: selected ? weight + 1.5 : weight,
-    opacity: 1,
-    fillColor: territoryColor(zip),
-    fillOpacity: state.territories[zip]?.last_worked ? 0.42 : 0.01,
-    interactive: true
-  };
-}
-function bindTooltip(layer, feature) {
-  const z = zipCode(feature);
-  layer.bindTooltip(z, { permanent:true, direction:"center", className:"zip-label" });
-  updateLabels();
-}
-function updateLabels() {
-  if (!zipLayer) return;
-  const mode = state.settings.labelsMode;
-  const show = mode === "on" || (mode === "auto" && map.getZoom() >= 11);
-  zipLayer.eachLayer(l => {
-    if (show) { try { l.openTooltip(); } catch {} }
-    else { try { l.closeTooltip(); } catch {} }
-  });
-}
-function renderVisibleZips() {
-  if (zipLayer) {
-    map.removeLayer(zipLayer);
-    zipLayer = null;
-  }
-
-  if (!zipData) return;
-
-  if (!shouldShowZips()) {
-    updateSelectedInfo();
-    return;
-  }
-
-  const b = map.getBounds().pad(0.35);
-  const features = (zipData.features || []).filter(f => featureInBounds(f, b)).slice(0, 900);
-
-  zipLayer = L.geoJSON({ type:"FeatureCollection", features }, {
-    pane: "zipPane",
-    renderer: zipRenderer,
-    style: zipStyle,
-    interactive: true,
-    onEachFeature: (f, layer) => {
-      bindTooltip(layer, f);
-      layer.on("click", (e) => {
-        L.DomEvent.stopPropagation(e);
-        selectedZip = zipCode(f);
-        openZipPopup(layer, selectedZip);
-        updateSelectedInfo();
-        if (zipLayer) zipLayer.setStyle(zipStyle);
-      });
-    }
-  }).addTo(map);
-
-  try { zipLayer.bringToFront(); } catch {}
-  if (coverageTagLayer) try { coverageTagLayer.bringToFront(); } catch {}
-  updateLabels();
-}
-function scheduleRender() {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(renderVisibleZips, 160);
-}
-async function loadZipData() {
-  const infoEl = document.getElementById("selectedInfo");
-  if (infoEl) infoEl.innerHTML = "Loading ZIP data…";
-
-  const cached = localStorage.getItem("tm_zip_geojson_cache");
-  if (cached) {
-    try {
-      zipData = JSON.parse(cached);
-      scheduleRender();
-    } catch {}
-  }
-
-  for (const url of ZIP_URLS) {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error("ZIP fetch failed " + res.status);
-      const data = await res.json();
-      if (!data || !data.features || !data.features.length) throw new Error("ZIP data empty");
-      zipData = data;
-      try { localStorage.setItem("tm_zip_geojson_cache", JSON.stringify(zipData)); } catch {}
-      scheduleRender();
-      updateSelectedInfo();
-      return;
-    } catch (err) {
-      console.warn("ZIP source failed:", url, err.message);
-    }
-  }
-
-  if (infoEl) infoEl.innerHTML = "Could not load ZIP boundaries. Check connection, then refresh.";
-}
-function teamOptions(selectedId) {
-  return state.teams.map(t => `<option value="${t.id}" ${selectedId === t.id ? "selected" : ""}>${t.name}</option>`).join("");
-}
-function openZipPopup(layer, zip) {
-  zipPopupOpen = true;
-  const t = state.territories[zip] || {};
-  const defaultOwner = state.teams[0]?.id || "team1";
-  const defaultHandoff = state.teams[1]?.id || defaultOwner;
-  const today = new Date().toISOString().slice(0,10);
-  const yesterdayDate = new Date(Date.now() - 86400000).toISOString().slice(0,10);
-  layer.bindPopup(`
-    <div class="zipQuickMenu">
-      <div class="zipTitle">ZIP ${zip}</div>
-      <div class="zipSub">Last worked: ${t.last_worked || "Not set"}</div>
-
-      <div class="quickGrid">
-        <button onclick="setZipDate('${zip}', '${today}')">Today</button>
-        <button class="secondary" onclick="setZipDate('${zip}', '${yesterdayDate}')">Yesterday</button>
-      </div>
-
-      <label>Past date / exact date</label>
-      <div class="dateRow">
-        <input id="date_${zip}" type="date" value="${t.last_worked || ""}">
-        <button onclick="saveDateForZip('${zip}')">Save</button>
-      </div>
-
-      <details open>
-        <summary>Teams</summary>
-        <label>Owner team</label>
-        <select id="owner_${zip}">${teamOptions(t.owner_team_id || defaultOwner)}</select>
-        <label>Handoff team</label>
-        <select id="handoff_${zip}">${teamOptions(t.handoff_team_id || defaultHandoff)}</select>
-        <button class="secondary" onclick="saveTeamsForZip('${zip}')">Save Teams</button>
-      </details>
-
-      <details>
-        <summary>Notes</summary>
-        <textarea id="notes_${zip}" placeholder="Notes for this ZIP...">${t.notes || ""}</textarea>
-        <button class="secondary" onclick="saveNotesForZip('${zip}')">Save Notes</button>
-      </details>
-
-      <button class="danger" onclick="clearZip('${zip}')">Clear ZIP</button>
-    </div>
-  `).openPopup();
-}
-window.markToday = async function(zip) {
-  state.territories[zip] = state.territories[zip] || {};
-  state.territories[zip].last_worked = new Date().toISOString().slice(0,10);
-  await saveTerritory(zip);
-  refreshMap();
-  zipPopupOpen = true;
-};
-
-window.setZipDate = async function(zip, dateValue) {
-  state.territories[zip] = state.territories[zip] || {};
-  state.territories[zip].last_worked = dateValue;
-  await saveTerritory(zip);
-  refreshMap();
-};
-
-window.saveDateForZip = async function(zip) {
-  const el = document.getElementById("date_" + zip);
-  if (!el || !el.value) return;
-  state.territories[zip] = state.territories[zip] || {};
-  state.territories[zip].last_worked = el.value;
-  await saveTerritory(zip);
-  refreshMap();
-  zipPopupOpen = true;
-};
-
-window.saveTeamsForZip = async function(zip) {
-  state.territories[zip] = state.territories[zip] || {};
-  state.territories[zip].owner_team_id = document.getElementById("owner_"+zip).value;
-  state.territories[zip].handoff_team_id = document.getElementById("handoff_"+zip).value;
-  await saveTerritory(zip);
-  refreshMap();
-  zipPopupOpen = true;
-};
-window.saveNotesForZip = async function(zip) {
-  state.territories[zip] = state.territories[zip] || {};
-  state.territories[zip].notes = document.getElementById("notes_"+zip).value.trim();
-  await saveTerritory(zip);
-  refreshMap();
-  zipPopupOpen = true;
-};
-window.clearZip = async function(zip) {
-  delete state.territories[zip];
-  if (supabaseClient && currentUser) {
-    await supabaseClient.from("territories").delete().eq("zip", zip);
-  }
-  saveLocal();
-  refreshMap();
-};
-function refreshMap() {
-  ensureCoverageState();
-  ensureZipLineSettings();
-  saveLocal();
-  renderCoverageAreas();
-  if (zipLayer) zipLayer.setStyle(zipStyle);
-  if (!zipLayer && zipData && shouldShowZips()) scheduleRender();
-  updateSelectedInfo();
-}
-
-
-function coveragePopupHtml(a) {
-  return `
-    <div class="coveragePopup">
-      <strong>Coverage area</strong><br>
-      Tag: ${a.user_tag || "Not set"}<br>
-      By: ${a.user_email || "Unknown"}<br>
-      Date: ${a.last_worked || "Not set"}<br>
-      ZIP: ${a.zip || "Not assigned"}<br>
-
-      <label>Tag/name</label>
-      <input id="coverageTag_${a.id}" type="text" value="${a.user_tag || ""}" placeholder="Tag above drawing">
-
-      <label>Area color</label>
-      <input id="coverageColor_${a.id}" type="color" value="${a.color || "#22c55e"}">
-
-      <label>Worked date</label>
-      <input id="coverageDate_${a.id}" type="date" value="${a.last_worked || ""}">
-
-      <button class="secondary" onclick="saveCoverageDetails('${a.id}')">Save Area Details</button>
-      <button onclick="startEditCoverageArea('${a.id}')">Redraw / Edit Shape</button>
-      <button class="danger" onclick="deleteCoverageArea('${a.id}')">Delete Area</button>
-    </div>
-  `;
-}
-
-function polygonCenterFromGeometry(geometry) {
-  try {
-    const coords = geometry.coordinates && geometry.coordinates[0] ? geometry.coordinates[0] : [];
-    if (!coords.length) return null;
-    let lat = 0, lng = 0, count = 0;
-    coords.forEach(pair => {
-      if (!Array.isArray(pair) || pair.length < 2) return;
-      lng += Number(pair[0]);
-      lat += Number(pair[1]);
-      count++;
-    });
-    if (!count) return null;
-    return [lat / count, lng / count];
-  } catch {
-    return null;
-  }
-}
-
-function openCoverageEditor(id) {
-  zipPopupOpen = false;
-  selectedCoverageId = id;
-  const a = state.coverageAreas[id];
-  if (!a) return;
-  const center = polygonCenterFromGeometry(a.geometry);
-  if (!center) return;
-  L.popup()
-    .setLatLng(center)
-    .setContent(coveragePopupHtml(a))
-    .openOn(map);
-}
-window.openCoverageEditor = openCoverageEditor;
-
-function shouldShowCoverageTags() {
-  return shouldShowMapWorkLayers() && map.getZoom() >= 10;
-}
-
-function renderCoverageAreas() {
-  ensureCoverageState();
-  if (coverageLayer) {
-    map.removeLayer(coverageLayer);
-    coverageLayer = null;
-  }
-  if (coverageTagLayer) {
-    map.removeLayer(coverageTagLayer);
-    coverageTagLayer = null;
-  }
-
-  if (!shouldShowMapWorkLayers()) return;
-
-  const features = Object.values(state.coverageAreas || {})
-    .filter(a => a && a.geometry)
-    .filter(coveragePassesFilter);
-
-  coverageLayer = L.geoJSON({
-    type: "FeatureCollection",
-    features: features.map(a => ({
-      type: "Feature",
-      properties: { id: a.id },
-      geometry: a.geometry
-    }))
-  }, {
-    pane: "coveragePane",
-    renderer: coverageRenderer,
-    interactive: true,
-    style: feature => {
-      const a = state.coverageAreas[feature.properties.id];
-      return {
-        pane: "coveragePane",
-        color: a.color || "#22c55e",
-        weight: 2,
-        opacity: 0.95,
-        fillColor: coverageColor(a),
-        fillOpacity: coverageOpacity(a)
-      };
-    },
-    onEachFeature: (feature, layer) => {
-      const a = state.coverageAreas[feature.properties.id];
-      layer.bindPopup(coveragePopupHtml(a));
-      layer.on("click", () => openCoverageEditor(a.id));
-    }
-  }).addTo(map);
-
-  coverageTagLayer = L.layerGroup();
-  features.forEach(a => {
-    const center = polygonCenterFromGeometry(a.geometry);
-    if (!center) return;
-    const isSelected = selectedCoverageId === a.id;
-    if (!shouldShowCoverageTags() && !isSelected) return;
-    const tagText = a.user_tag || a.user_email || "Coverage";
-    const marker = L.marker(center, {
-      pane: "tagPane",
-      interactive: true,
-      keyboard: false,
-      icon: L.divIcon({
-        className: "coverage-tag-marker",
-        html: `<button class="coverage-tag-button ${isSelected ? "selected-tag" : ""}" onclick="openCoverageEditor('${a.id}')">${tagText}</button>`,
-        iconSize: null
-      })
-    });
-    marker.on("click", () => openCoverageEditor(a.id));
-    coverageTagLayer.addLayer(marker);
-  });
-  coverageTagLayer.addTo(map);
-
-  try { if (coverageLayer) coverageLayer.bringToBack(); } catch {}
-  try { if (zipLayer) zipLayer.bringToFront(); } catch {}
-  try { if (coverageTagLayer) coverageTagLayer.bringToFront(); } catch {}
-}
-
-function updateSelectedInfo() {
-  if (!selectedZip) {
-    document.getElementById("selectedInfo").innerHTML = shouldShowZips()
-      ? "Tap a visible ZIP."
-      : `ZIP boundaries hidden until zoom ${state.settings.zipZoom}.`;
-    return;
-  }
-  const t = state.territories[selectedZip] || {};
-  document.getElementById("selectedInfo").innerHTML = `
-    <strong>ZIP ${selectedZip}</strong><br>
-    Last worked: ${t.last_worked || "Not set"}<br>
-    Owner: ${teamById(t.owner_team_id)?.name || "None"}<br>
-    Handoff: ${teamById(t.handoff_team_id)?.name || "None"}<br>
-    Notes: ${t.notes || "None"}
-  `;
-}
-
-// Local/Supabase persistence
-async function saveTerritory(zip) {
-  saveLocal();
-  if (!supabaseClient || !currentUser) return;
-  const t = state.territories[zip] || {};
-  await supabaseClient.from("territories").upsert({
-    zip,
-    last_worked: t.last_worked || null,
-    owner_team_id: t.owner_team_id || null,
-    handoff_team_id: t.handoff_team_id || null,
-    notes: t.notes || null,
-    updated_by: currentUser.id,
-    updated_at: new Date().toISOString()
-  });
-}
-async function loadCloudData() {
-  if (!supabaseClient || !currentUser) return;
-  const teams = await supabaseClient.from("teams").select("*").order("sort_order");
-  if (!teams.error && teams.data?.length) {
-    state.teams = teams.data.map(t => ({ id:t.id, name:t.name, color:t.color }));
-  }
-  const appSettings = await supabaseClient.from("app_settings").select("*").eq("id", "global").maybeSingle();
-  if (!appSettings.error && appSettings.data) {
-    state.settings.timeMode = appSettings.data.time_mode || state.settings.timeMode || "months";
-    state.settings.threshold = Number(appSettings.data.threshold || state.settings.threshold || 3);
-  }
-
-  const territories = await supabaseClient.from("territories").select("*");
-  if (!territories.error && territories.data) {
-    state.territories = {};
-    territories.data.forEach(t => {
-      state.territories[t.zip] = {
-        last_worked: t.last_worked,
-        owner_team_id: t.owner_team_id,
-        handoff_team_id: t.handoff_team_id,
-        notes: t.notes || ""
-      };
-    });
-  }
-  const coverage = await supabaseClient.from("coverage_areas").select("*");
-  if (!coverage.error && coverage.data) {
-    // Supabase is the source of truth. Replace local cache on successful fetch
-    // so drawings deleted on another device do not come back from localStorage.
-    const freshCoverageAreas = {};
-    coverage.data.forEach(a => {
-      if (!a || !a.id || !a.geometry) return;
-      const normalized = normalizeCoverageArea(a, {});
-      if (normalized) freshCoverageAreas[a.id] = normalized;
-    });
-    state.coverageAreas = freshCoverageAreas;
-  } else if (coverage.error) {
-    console.warn("Coverage load failed:", coverage.error.message);
-  }
-
-  saveLocal();
-  renderTeamsEditor();
-  refreshMap();
-}
-function subscribeRealtime() {
-  if (!supabaseClient || !currentUser) return;
-  supabaseClient.channel("territory-updates")
-    .on("postgres_changes", { event:"*", schema:"public", table:"territories" }, payload => {
-      const row = payload.new || payload.old;
-      if (!row?.zip) return;
-      if (payload.eventType === "DELETE") delete state.territories[row.zip];
-      else state.territories[row.zip] = {
-        last_worked: row.last_worked,
-        owner_team_id: row.owner_team_id,
-        handoff_team_id: row.handoff_team_id,
-        notes: row.notes || ""
-      };
-      refreshMap();
-    })
-    .subscribe();
-
-  supabaseClient.channel("coverage-area-updates")
-    .on("postgres_changes", { event:"*", schema:"public", table:"coverage_areas" }, payload => {
-      const row = payload.new || payload.old;
-      if (!row?.id) return;
-      if (payload.eventType === "DELETE") {
-        delete state.coverageAreas[row.id];
-        if (selectedCoverageId === row.id) selectedCoverageId = null;
-        saveLocal();
-        try { map.closePopup(); } catch {}
-      }
-      else {
-        const normalized = normalizeCoverageArea(row, state.coverageAreas[row.id] || {});
-        if (normalized) state.coverageAreas[row.id] = normalized;
-      }
-      refreshMap();
-    })
-    .subscribe();
-
-  supabaseClient.channel("app-settings-updates")
-    .on("postgres_changes", { event:"*", schema:"public", table:"app_settings" }, payload => {
-      const row = payload.new;
-      if (!row || row.id !== "global") return;
-      state.settings.timeMode = row.time_mode || state.settings.timeMode;
-      state.settings.threshold = Number(row.threshold || state.settings.threshold || 3);
-      saveLocal();
-      initControls();
-initPasswordResetControls();
-initAdminPasswordResetControls();
-initAdminUsersControls();
-initForcedPasswordControls();
-initLocationControls();
-initAppTools();
-setTimeout(() => showLocationPermissionPrompt(false), 1200);
-      refreshMap();
-    })
-    .subscribe();
-}
-
-function startCoverageSyncRefresh() {
-  if (coverageSyncTimer) clearInterval(coverageSyncTimer);
-  if (!supabaseClient || !currentUser) return;
-
-  coverageSyncTimer = setInterval(() => {
-    if (!document.hidden && currentUser) {
-      loadCloudData();
-    }
-  }, 15000);
-}
-
-
-
-// Safe Location Services
-function locationDisplayName() {
-  return state?.settings?.userTag || currentUser?.email || "Me";
-}
-
-function setLocationStatus(text) {
-  const el = document.getElementById("locationStatus");
-  if (el) el.textContent = text;
-  const menuEl = document.getElementById("locationStatusMenu");
-  if (menuEl) menuEl.textContent = text;
-}
-
-function locationPaneName() {
-  return map.getPane("tagPane") ? "tagPane" : "markerPane";
-}
-
-function updateMyLocationMarker(lat, lng, accuracy) {
-  const latlng = [lat, lng];
-
-  if (!myLocationMarker) {
-    myLocationMarker = L.marker(latlng, {
-      pane: locationPaneName(),
-      icon: L.divIcon({
-        className: "",
-        html: '<div class="my-location-dot"></div>',
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
-      })
-    }).addTo(map);
-    myLocationMarker.bindTooltip("You", {
-      permanent: false,
-      direction: "top",
-      className: "location-label"
-    });
-  } else {
-    myLocationMarker.setLatLng(latlng);
-  }
-
-  if (myAccuracyCircle) {
-    try { map.removeLayer(myAccuracyCircle); } catch {}
-  }
-
-  myAccuracyCircle = L.circle(latlng, {
-    radius: accuracy || 25,
-    color: "#1976ff",
-    weight: 1,
-    opacity: 0.35,
-    fillColor: "#1976ff",
-    fillOpacity: 0.08,
-    interactive: false
-  }).addTo(map);
-}
-
-async function saveMyLocationToCloud(lat, lng, accuracy) {
-  if (!supabaseClient || !currentUser) return;
-  if ((state.settings.shareLocation || "off") !== "on") return;
-
-  const { error } = await supabaseClient.from("user_locations").upsert({
-    user_id: currentUser.id,
-    email: currentUser.email,
-    display_name: locationDisplayName(),
-    lat,
-    lng,
-    accuracy: accuracy || null,
-    updated_at: new Date().toISOString()
-  });
-
-  if (error) console.warn("Location save failed:", error.message);
-}
-
-function handleLocationPosition(position, shouldCenter) {
-  const { latitude, longitude, accuracy } = position.coords;
-  updateMyLocationMarker(latitude, longitude, accuracy);
-  setLocationStatus("Location active. Accuracy: " + Math.round(accuracy || 0) + "m");
-
-  if (shouldCenter) {
-    map.setView([latitude, longitude], Math.max(map.getZoom(), 14));
-  }
-
-  saveMyLocationToCloud(latitude, longitude, accuracy);
-}
-
-async function enableLocationPermission() {
-  const stateResult = await checkLocationPermissionState();
-  if (stateResult === "denied") {
-    alert("Location is blocked. On iPhone, go to Settings → Privacy & Security → Location Services → Safari Websites, then choose While Using App or Ask Next Time.");
-    return;
-  }
-  locateMe(true);
-}
-
-function locateMe(shouldCenter = true) {
-  if (!navigator.geolocation) {
-    alert("Location is not supported on this device.");
-    return;
-  }
-
-  setLocationStatus("Finding your location...");
-  navigator.geolocation.getCurrentPosition(
-    pos => handleLocationPosition(pos, shouldCenter),
-    err => {
-      setLocationStatus("Location failed: " + err.message);
-      alert("Location failed: " + err.message);
-    },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
-  );
-}
-
-function startLiveTracking() {
-  if (!navigator.geolocation) {
-    alert("Location is not supported on this device.");
-    return;
-  }
-
-  if (locationWatchId !== null) {
-    navigator.geolocation.clearWatch(locationWatchId);
-  }
-
-  setLocationStatus("Live tracking active...");
-  locationWatchId = navigator.geolocation.watchPosition(
-    pos => handleLocationPosition(pos, false),
-    err => setLocationStatus("Tracking failed: " + err.message),
-    { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 }
-  );
-}
-
-function stopLiveTracking() {
-  if (locationWatchId !== null) {
-    navigator.geolocation.clearWatch(locationWatchId);
-    locationWatchId = null;
-  }
-  setLocationStatus("Live tracking stopped.");
-}
-
-async function loadTeamLocations() {
-  if (!supabaseClient || !currentUser) return;
-
-  const { data, error } = await supabaseClient
-    .from("user_locations")
-    .select("*")
-    .gte("updated_at", new Date(Date.now() - 1000 * 60 * 60).toISOString());
-
-  if (error) {
-    console.warn("Team location load failed:", error.message);
-    return;
-  }
-
-  if (teamLocationLayer) {
-    try { map.removeLayer(teamLocationLayer); } catch {}
-  }
-
-  teamLocationLayer = L.layerGroup();
-
-  (data || []).forEach(row => {
-    if (!row.lat || !row.lng) return;
-    if (row.user_id === currentUser.id) return;
-
-    const name = row.display_name || row.email || "User";
-    const initials = String(name).trim().split(/\s+/).map(s => s[0]).join("").slice(0,2).toUpperCase();
-
-    const marker = L.marker([row.lat, row.lng], {
-      pane: locationPaneName(),
-      icon: L.divIcon({
-        className: "",
-        html: '<div class="team-location-dot">' + (initials || "?") + '</div>',
-        iconSize: [28, 28],
-        iconAnchor: [14, 14]
-      })
-    }).bindTooltip(name, {
-      permanent: false,
-      direction: "top",
-      className: "location-label"
-    });
-
-    teamLocationLayer.addLayer(marker);
-  });
-
-  teamLocationLayer.addTo(map);
-}
-
-function startTeamLocationRefresh() {
-  if (teamLocationRefreshTimer) clearInterval(teamLocationRefreshTimer);
-  if (!supabaseClient || !currentUser) return;
-  loadTeamLocations();
-  teamLocationRefreshTimer = setInterval(() => {
-    if (!document.hidden && currentUser) loadTeamLocations();
-  }, 20000);
-}
-
-
-function showLocationPermissionPrompt(force = false) {
-  const modal = document.getElementById("locationPromptModal");
-  if (!modal) return;
-
-  const alreadyAnswered = localStorage.getItem("tm_location_prompt_answered") === "yes";
-  if (!force && alreadyAnswered) return;
-
-  modal.classList.remove("hidden");
-}
-
-function hideLocationPermissionPrompt(answered = true) {
-  const modal = document.getElementById("locationPromptModal");
-  if (modal) modal.classList.add("hidden");
-  if (answered) localStorage.setItem("tm_location_prompt_answered", "yes");
-}
-
-async function checkLocationPermissionState() {
-  if (!navigator.permissions || !navigator.permissions.query) return "unknown";
-  try {
-    const result = await navigator.permissions.query({ name: "geolocation" });
-    return result.state || "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
-async function enableLocationFromPrompt() {
-  const stateResult = await checkLocationPermissionState();
-
-  if (stateResult === "denied") {
-    hideLocationPermissionPrompt(true);
-    alert("Location is blocked. On iPhone, go to Settings → Privacy & Security → Location Services → Safari Websites, then choose While Using App or Ask Next Time.");
-    return;
-  }
-
-  hideLocationPermissionPrompt(true);
-  locateMe(true);
-}
-
-function initLocationControls() {
-  const gpsFab = document.getElementById("gpsFab");
-  const gpsPanel = document.getElementById("gpsPanel");
-  const closeBtn = document.getElementById("closeGpsPanelBtn");
-  const locateBtn = document.getElementById("locateMeBtn");
-  const enableBtn = document.getElementById("enableLocationBtn");
-  const followBtn = document.getElementById("followMeBtn");
-  const stopBtn = document.getElementById("stopFollowBtn");
-  const openSettingsBtn = document.getElementById("openLocationSettingsBtn");
-
-  const enableMenuBtn = document.getElementById("enableLocationFromMenuBtn");
-  const locateMenuBtn = document.getElementById("locateMeFromMenuBtn");
-  const startMenuBtn = document.getElementById("startTrackingFromMenuBtn");
-  const stopMenuBtn = document.getElementById("stopTrackingFromMenuBtn");
-  const shareInput = document.getElementById("shareLocationInput");
-  const shareMenuInput = document.getElementById("shareLocationMenuInput");
-  const saveBtn = document.getElementById("saveLocationSettingsBtn");
-  const permissionEnableBtn = document.getElementById("permissionEnableLocationBtn");
-  const permissionNotNowBtn = document.getElementById("permissionNotNowBtn");
-  const saveMenuBtn = document.getElementById("saveLocationMenuSettingsBtn");
-
-  const syncShareInputs = () => {
-    if (shareInput) shareInput.value = state.settings.shareLocation || "off";
-    if (shareMenuInput) shareMenuInput.value = state.settings.shareLocation || "off";
-  };
-
-  const saveShareSetting = () => {
-    const value = (shareMenuInput && shareMenuInput.value) || (shareInput && shareInput.value) || "off";
-    state.settings.shareLocation = value;
-    saveLocal();
-    syncShareInputs();
-    setLocationStatus(value === "on"
-      ? "Location sharing on. Tap Enable Location or Start Live Tracking."
-      : "Location sharing off.");
-  };
-
-  syncShareInputs();
-
-  if (gpsFab && gpsPanel) gpsFab.onclick = () => gpsPanel.classList.toggle("hidden");
-  if (closeBtn && gpsPanel) closeBtn.onclick = () => gpsPanel.classList.add("hidden");
-
-  if (enableBtn) enableBtn.onclick = () => showLocationPermissionPrompt(true);
-  if (enableMenuBtn) enableMenuBtn.onclick = () => showLocationPermissionPrompt(true);
-  if (permissionEnableBtn) permissionEnableBtn.onclick = enableLocationFromPrompt;
-  if (permissionNotNowBtn) permissionNotNowBtn.onclick = () => hideLocationPermissionPrompt(true);
-
-  if (locateBtn) locateBtn.onclick = () => locateMe(true);
-  if (locateMenuBtn) locateMenuBtn.onclick = () => locateMe(true);
-
-  if (followBtn) followBtn.onclick = startLiveTracking;
-  if (startMenuBtn) startMenuBtn.onclick = startLiveTracking;
-
-  if (stopBtn) stopBtn.onclick = stopLiveTracking;
-  if (stopMenuBtn) stopMenuBtn.onclick = stopLiveTracking;
-
-  if (saveBtn) saveBtn.onclick = saveShareSetting;
-  if (saveMenuBtn) saveMenuBtn.onclick = saveShareSetting;
-
-  if (openSettingsBtn) {
-    openSettingsBtn.onclick = () => {
-      const panel = document.getElementById("menuPanel");
-      if (panel) panel.classList.remove("hidden");
-      if (gpsPanel) gpsPanel.classList.add("hidden");
+(() => {
+  const ZIP_URL = "https://raw.githubusercontent.com/OpenDataDE/State-zip-code-GeoJSON/master/ca_california_zip_codes_geo.min.json";
+  const STORAGE_KEY = "tm_v2_fixed_state";
+
+  const state = loadState();
+  let map, zipData, zipLayer, coverageLayer, myLocationMarker, watchId = null;
+  let currentUser = null;
+  let isAdmin = false;
+  let selectedZip = null;
+
+  const supabaseClient = window.supabase && window.TM_SUPABASE_URL && window.TM_SUPABASE_ANON_KEY
+    ? window.supabase.createClient(window.TM_SUPABASE_URL, window.TM_SUPABASE_ANON_KEY)
+    : null;
+
+  function defaultState(){
+    return {
+      settings: {
+        zipZoom: 10,
+        coverageMode: "with_zips",
+        shareLocation: "off"
+      },
+      teams: [
+        { id:"team1", name:"Team 1", color:"#2563eb" },
+        { id:"team2", name:"Team 2", color:"#9333ea" },
+        { id:"team3", name:"Team 3", color:"#ec4899" },
+        { id:"team4", name:"Team 4", color:"#0f766e" }
+      ],
+      territories: {},
+      coverageAreas: {},
+      profile: {
+        display_name:"",
+        color:"#22c55e",
+        preferred_team_id:"team1"
+      },
+      users: []
     };
   }
-}
 
+  function loadState(){
+    try {
+      return { ...defaultState(), ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")) };
+    } catch {
+      return defaultState();
+    }
+  }
 
-// Admin permissions
-async function checkAdminStatus() {
-  isAdmin = false;
+  function saveState(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
 
-  if (!supabaseClient || !currentUser) return false;
+  function showSheet(title, html){
+    document.getElementById("sheetTitle").textContent = title;
+    document.getElementById("sheetBody").innerHTML = html;
+    document.getElementById("sheet").classList.remove("hidden");
+  }
 
-  const { data, error } = await supabaseClient
-    .from("admins")
-    .select("user_id")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
+  function closeSheet(){
+    document.getElementById("sheet").classList.add("hidden");
+  }
 
-  if (error) {
-    console.warn("Admin check failed:", error.message);
+  function status(msg){
+    console.log("[TM V2]", msg);
+  }
+
+  function hideLoading(){
+    const el = document.getElementById("loadingBox");
+    if (el) el.classList.add("hidden");
+  }
+
+  function initMap(){
+    if (!window.L) {
+      alert("Map library did not load. Check internet connection.");
+      return;
+    }
+
+    map = L.map("map", { preferCanvas:true }).setView([38.75, -121.3], 7);
+    window.TM_V2_MAP = map;
+
+    map.createPane("coveragePane");
+    map.getPane("coveragePane").style.zIndex = 390;
+    map.createPane("zipPane");
+    map.getPane("zipPane").style.zIndex = 470;
+    map.createPane("tagPane");
+    map.getPane("tagPane").style.zIndex = 650;
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:"© OpenStreetMap contributors"
+    }).addTo(map);
+
+    map.on("moveend zoomend", refreshMap);
+    setTimeout(() => map.invalidateSize(), 250);
+    loadZipData();
+  }
+
+  async function loadZipData(){
+    try {
+      const cached = localStorage.getItem("tm_v2_zip_cache");
+      if (cached) {
+        zipData = JSON.parse(cached);
+        refreshMap();
+      }
+
+      const res = await fetch(ZIP_URL, { cache:"force-cache" });
+      if (!res.ok) throw new Error("ZIP fetch failed");
+      zipData = await res.json();
+      try { localStorage.setItem("tm_v2_zip_cache", JSON.stringify(zipData)); } catch {}
+      refreshMap();
+      hideLoading();
+    } catch (err) {
+      console.warn(err);
+      hideLoading();
+      alert("Map loaded, but ZIP boundaries could not load yet. Try refreshing.");
+    }
+  }
+
+  function zipCode(feature){
+    return feature.properties.ZCTA5CE10 || feature.properties.ZIP || feature.properties.zip || feature.properties.GEOID10 || "ZIP";
+  }
+
+  function featureInBounds(feature, bounds){
+    const coords = feature.geometry.coordinates.flat(3);
+    for (let i=0; i<coords.length; i+=2){
+      const lng = coords[i];
+      const lat = coords[i+1];
+      if (bounds.contains([lat,lng])) return true;
+    }
     return false;
   }
 
-  isAdmin = !!data;
-  return isAdmin;
-}
-
-async function saveCoverageArea(area) {
-  ensureCoverageState();
-
-  const previous = state.coverageAreas[area.id] || {};
-  const normalized = normalizeCoverageArea(area, previous);
-
-  if (!normalized.user_tag) normalized.user_tag = state.settings.userTag || userDisplayName();
-  if (!normalized.color) normalized.color = state.settings.userColor || "#22c55e";
-
-  // Preserve the original creator when editing someone else's drawing.
-  normalized.user_id = normalized.user_id || currentUser?.id || "local";
-  normalized.user_email = normalized.user_email || currentUser?.email || userDisplayName();
-
-  state.coverageAreas[normalized.id] = normalized;
-  saveLocal();
-
-  if (!supabaseClient || !currentUser) {
-    refreshMap();
-    return;
+  function refreshMap(){
+    renderZips();
+    renderCoverage();
   }
 
-  const { error } = await supabaseClient.from("coverage_areas").upsert({
-    id: normalized.id,
-    zip: normalized.zip || null,
-    user_id: normalized.user_id === "local" ? currentUser.id : normalized.user_id,
-    user_email: normalized.user_email || currentUser.email,
-    user_tag: normalized.user_tag || normalized.user_email || state.settings.userTag || currentUser.email,
-    color: normalized.color,
-    last_worked: normalized.last_worked,
-    geometry: normalized.geometry,
-    updated_at: new Date().toISOString()
-  });
-
-  if (error) {
-    alert("Could not save coverage area: " + error.message);
-  }
-
-  refreshMap();
-}
-
-window.deleteCoverageArea = async function(id) {
-  if (!state.coverageAreas[id]) return;
-  if (!confirm("Delete this freehand area for everyone?")) return;
-
-  const backup = state.coverageAreas[id];
-
-  delete state.coverageAreas[id];
-  if (selectedCoverageId === id) selectedCoverageId = null;
-  saveLocal();
-  refreshMap();
-
-  try { map.closePopup(); } catch {}
-
-  if (supabaseClient && currentUser) {
-    const { error } = await supabaseClient
-      .from("coverage_areas")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
-      // Put it back if Supabase refused the delete.
-      state.coverageAreas[id] = backup;
-      saveLocal();
-      refreshMap();
-      alert("Could not delete freehand area from the shared database: " + error.message);
-      return;
-    }
-  }
-
-  // Extra refresh catches devices/browsers that missed the realtime delete event.
-  setTimeout(loadCloudData, 400);
-};
-
-window.saveCoverageDetails = async function(id) {
-  const area = state.coverageAreas[id];
-  if (!area) return;
-
-  const tagEl = document.getElementById("coverageTag_" + id);
-  const colorEl = document.getElementById("coverageColor_" + id);
-  const dateEl = document.getElementById("coverageDate_" + id);
-
-  const newTag = tagEl ? tagEl.value.trim() : area.user_tag;
-  area.user_tag = newTag || area.user_tag || area.user_email || "Coverage";
-  area.color = colorEl ? colorEl.value : area.color;
-  area.last_worked = dateEl && dateEl.value ? dateEl.value : area.last_worked;
-
-  await saveCoverageArea(area);
-  map.closePopup();
-};
-
-window.startEditCoverageArea = function(id) {
-  const area = state.coverageAreas[id];
-  if (!area) return;
-
-  editingCoverageId = id;
-
-  if (activeDrawingLayer) {
-    map.removeLayer(activeDrawingLayer);
-    activeDrawingLayer = null;
-  }
-
-  startFreehandDrawing();
-  showDrawHint("Editing area: redraw the shape, then tap Finish.");
-  map.closePopup();
-};
-
-
-function nearestSelectedZip() {
-  return selectedZip || null;
-}
-
-function makeCoverageId() {
-  if (window.crypto?.randomUUID) return crypto.randomUUID();
-  return "cov_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
-}
-
-function hideDrawPanelForDrawing() {
-  if (!isDrawing) return;
-  const panel = document.getElementById("drawPanel");
-  if (panel) panel.classList.add("hidden");
-}
-
-function showDrawPanelAfterStroke() {
-  if (!isDrawing) return;
-  const panel = document.getElementById("drawPanel");
-  if (panel) panel.classList.remove("hidden");
-}
-
-function hideDrawPanelDone() {
-  const panel = document.getElementById("drawPanel");
-  if (panel) panel.classList.add("hidden");
-}
-
-function startFreehandDrawing() {
-  if (!currentUser && supabaseClient) {
-    alert("Please sign in before drawing shared coverage areas.");
-    return;
-  }
-
-  isDrawing = true;
-  isPointerDrawing = false;
-  drawingPoints = [];
-  hideDrawPanelForDrawing();
-  document.body.classList.add("drawing-active");
-  map.dragging.disable();
-  map.touchZoom.disable();
-  map.scrollWheelZoom.disable();
-  map.doubleClickZoom.disable();
-  map.getContainer().style.touchAction = "none";
-  showDrawHint("Drawing mode: drag your finger over the worked area, then tap Finish. Everyone can see and edit saved drawings.");
-}
-
-function cancelFreehandDrawing() {
-  hideDrawPanelDone();
-  isDrawing = false;
-  isPointerDrawing = false;
-  editingCoverageId = null;
-  drawingPoints = [];
-  document.body.classList.remove("drawing-active");
-  map.dragging.enable();
-  map.touchZoom.enable();
-  map.scrollWheelZoom.enable();
-  map.doubleClickZoom.enable();
-  map.getContainer().style.touchAction = "";
-  if (activeDrawingLayer) {
-    map.removeLayer(activeDrawingLayer);
-    activeDrawingLayer = null;
-  }
-  hideDrawHint();
-}
-
-async function finishFreehandDrawing() {
-  if (!isDrawing || drawingPoints.length < 3) {
-    alert("Draw at least a small shape first.");
-    return;
-  }
-
-  const closed = [...drawingPoints, drawingPoints[0]];
-  const existing = editingCoverageId ? state.coverageAreas[editingCoverageId] : null;
-
-  const area = {
-    id: editingCoverageId || makeCoverageId(),
-    zip: existing?.zip || nearestSelectedZip(),
-    user_id: existing?.user_id || currentUser?.id || "local",
-    user_email: existing?.user_email || currentUser?.email || userDisplayName(),
-    user_tag: existing?.user_tag || state.settings.userTag || currentUser?.email || userDisplayName(),
-    color: existing?.color || state.settings.userColor || "#22c55e",
-    last_worked: existing?.last_worked || new Date().toISOString().slice(0,10),
-    geometry: {
-      type: "Polygon",
-      coordinates: [closed.map(p => [p.lng, p.lat])]
-    }
-  };
-
-  editingCoverageId = null;
-  cancelFreehandDrawing();
-  hideDrawPanelDone();
-  await saveCoverageArea(area);
-}
-
-function showDrawHint(text) {
-  let el = document.getElementById("drawHint");
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "drawHint";
-    el.className = "drawHint";
-    document.body.appendChild(el);
-  }
-  el.textContent = text;
-}
-
-function hideDrawHint() {
-  const el = document.getElementById("drawHint");
-  if (el) el.remove();
-}
-
-
-function latLngFromPointerEvent(ev) {
-  const source = ev.touches && ev.touches[0] ? ev.touches[0] : ev;
-  const rect = map.getContainer().getBoundingClientRect();
-  const point = L.point(source.clientX - rect.left, source.clientY - rect.top);
-  return map.containerPointToLatLng(point);
-}
-
-function addDrawingPointFromEvent(ev) {
-  if (!isDrawing || !isPointerDrawing) return;
-  ev.preventDefault();
-
-  const latlng = latLngFromPointerEvent(ev);
-  const last = drawingPoints[drawingPoints.length - 1];
-
-  if (last && map.latLngToLayerPoint(last).distanceTo(map.latLngToLayerPoint(latlng)) < 4) return;
-
-  drawingPoints.push(latlng);
-
-  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
-  activeDrawingLayer = L.polygon(drawingPoints, {
-    color: state.settings.userColor || "#22c55e",
-    weight: 2,
-    fillColor: state.settings.userColor || "#22c55e",
-    fillOpacity: 0.32
-  }).addTo(map);
-}
-
-function onDrawPointerDown(ev) {
-  if (!isDrawing) return;
-  hideDrawPanelForDrawing();
-  ev.preventDefault();
-  ev.stopPropagation();
-  isPointerDrawing = true;
-  drawingPoints = [];
-  addDrawingPointFromEvent(ev);
-  try { map.getContainer().setPointerCapture(ev.pointerId); } catch {}
-}
-
-function onDrawPointerMove(ev) {
-  if (!isDrawing || !isPointerDrawing) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  addDrawingPointFromEvent(ev);
-}
-
-function onDrawPointerUp(ev) {
-  if (!isDrawing) return;
-  ev.preventDefault();
-  ev.stopPropagation();
-  isPointerDrawing = false;
-  try { map.getContainer().releasePointerCapture(ev.pointerId); } catch {}
-  showDrawPanelAfterStroke();
-}
-
-const mapElForDrawing = map.getContainer();
-mapElForDrawing.addEventListener("pointerdown", onDrawPointerDown, { passive:false });
-mapElForDrawing.addEventListener("pointermove", onDrawPointerMove, { passive:false });
-mapElForDrawing.addEventListener("pointerup", onDrawPointerUp, { passive:false });
-mapElForDrawing.addEventListener("pointercancel", onDrawPointerUp, { passive:false });
-mapElForDrawing.addEventListener("touchstart", onDrawPointerDown, { passive:false });
-mapElForDrawing.addEventListener("touchmove", onDrawPointerMove, { passive:false });
-mapElForDrawing.addEventListener("touchend", onDrawPointerUp, { passive:false });
-mapElForDrawing.addEventListener("touchcancel", onDrawPointerUp, { passive:false });
-
-function drawPointFromEvent(e) {
-  if (!isDrawing) return;
-  const latlng = e.latlng || map.mouseEventToLatLng(e.originalEvent || e);
-  drawingPoints.push(latlng);
-
-  if (activeDrawingLayer) map.removeLayer(activeDrawingLayer);
-  activeDrawingLayer = L.polygon(drawingPoints, {
-    color: state.settings.userColor || "#22c55e",
-    weight: 2,
-    fillColor: state.settings.userColor || "#22c55e",
-    fillOpacity: 0.32
-  }).addTo(map);
-}
-
-
-
-
-
-
-// Admin Center v2
-let adminUsersCache = [];
-
-function setAdminResetStatus(text) {
-  const el = document.getElementById("adminResetStatus");
-  if (el) el.textContent = text || "";
-}
-
-function adminUserMatchesSearch(user) {
-  const input = document.getElementById("adminUserSearchInput");
-  const q = (input?.value || "").trim().toLowerCase();
-  if (!q) return true;
-  return `${user.email || ""} ${user.display_name || ""}`.toLowerCase().includes(q);
-}
-
-function renderAdminUsers(users) {
-  const el = document.getElementById("adminUsersList");
-  if (!el) return;
-
-  const filtered = (users || []).filter(adminUserMatchesSearch);
-
-  if (!filtered.length) {
-    el.innerHTML = "No users found.";
-    return;
-  }
-
-  el.innerHTML = filtered.map(u => {
-    const name = u.display_name || u.email || "Unknown user";
-    const email = u.email || "";
-    const role = u.role || "user";
-    const active = u.is_active === false ? "Inactive" : "Active";
-    const lastSeen = u.last_seen ? new Date(u.last_seen).toLocaleString() : "Not tracked";
-    const mustChange = u.must_change_password ? '<span class="userBadge danger">Must change password</span>' : "";
-    return `
-      <div class="adminUserRow">
-        <strong>${name}</strong>
-        <div class="adminUserMeta">${email}</div>
-        <div class="adminUserMeta">
-          <span class="userBadge">${role}</span>
-          <span class="userBadge">${active}</span>
-          ${mustChange}
-        </div>
-        <div class="adminUserMeta">Last seen: ${lastSeen}</div>
-        <div class="adminUserActions">
-          <button class="secondary" onclick="fillAdminResetEmail('${email}')">Use Email</button>
-          <button class="secondary" onclick="adminSetTemporaryPasswordFor('${email}')">Set Temp Password</button>
-          <button class="secondary" onclick="adminToggleUserActive('${u.user_id}', ${u.is_active === false ? "true" : "false"})">${u.is_active === false ? "Enable" : "Disable"}</button>
-        </div>
-      </div>
-    `;
-  }).join("");
-}
-
-function fillAdminResetEmail(email) {
-  const input = document.getElementById("adminResetEmailInput");
-  if (input) input.value = email || "";
-}
-window.fillAdminResetEmail = fillAdminResetEmail;
-
-async function loadAdminUsers() {
-  if (!isAdmin) {
-    alert("Only the admin can view users.");
-    return;
-  }
-  if (!supabaseClient) return;
-
-  const { data, error } = await supabaseClient
-    .from("user_profiles")
-    .select("user_id,email,display_name,role,is_active,must_change_password,last_seen,updated_at")
-    .order("email", { ascending: true });
-
-  if (error) {
-    const el = document.getElementById("adminUsersList");
-    if (el) el.textContent = "Could not load users: " + error.message;
-    return;
-  }
-
-  adminUsersCache = data || [];
-  renderAdminUsers(adminUsersCache);
-}
-
-async function adminSendPasswordReset() {
-  if (!isAdmin) {
-    alert("Only the admin can send password reset emails.");
-    return;
-  }
-
-  if (!supabaseClient) {
-    alert("Supabase is not connected. Check config.js.");
-    return;
-  }
-
-  const email = (document.getElementById("adminResetEmailInput")?.value || "").trim();
-  if (!email) {
-    alert("Enter the user's email first.");
-    return;
-  }
-
-  setAdminResetStatus("Sending reset email...");
-
-  const redirectTo = window.location.origin + window.location.pathname + "?v=29";
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
-
-  if (error) {
-    setAdminResetStatus("Failed: " + error.message);
-    alert("Password reset failed: " + error.message);
-    return;
-  }
-
-  setAdminResetStatus("Reset email sent to " + email + ".");
-}
-
-async function adminSetTemporaryPasswordFor(emailFromRow) {
-  const emailInput = document.getElementById("adminResetEmailInput");
-  if (emailFromRow && emailInput) emailInput.value = emailFromRow;
-  return adminSetTemporaryPassword();
-}
-window.adminSetTemporaryPasswordFor = adminSetTemporaryPasswordFor;
-
-async function adminSetTemporaryPassword() {
-  if (!isAdmin) {
-    alert("Only the admin can reset passwords.");
-    return;
-  }
-  if (!supabaseClient) {
-    alert("Supabase is not connected.");
-    return;
-  }
-
-  const email = (document.getElementById("adminResetEmailInput")?.value || "").trim();
-  const password = (document.getElementById("adminTempPasswordInput")?.value || "").trim();
-
-  if (!email) {
-    alert("Enter the user's email first.");
-    return;
-  }
-  if (!password || password.length < 6) {
-    alert("Temporary password must be at least 6 characters.");
-    return;
-  }
-
-  setAdminResetStatus("Setting temporary password...");
-
-  const { data, error } = await supabaseClient.functions.invoke("admin-reset-password", {
-    body: { email, password }
-  });
-
-  if (error || data?.error) {
-    const msg = data?.error || error?.message || "Unknown error";
-    setAdminResetStatus("Failed: " + msg);
-    alert("Temporary password failed: " + msg);
-    return;
-  }
-
-  setAdminResetStatus("✅ Temporary password successfully set for " + email + ". User must change it after login.");
-  alert("Temporary password successfully changed for " + email + ".\n\nThey can now log in with the temporary password and will be required to create a new one.");
-  await loadAdminUsers();
-}
-
-async function adminToggleUserActive(userId, active) {
-  if (!isAdmin || !supabaseClient) return;
-  const { error } = await supabaseClient
-    .from("user_profiles")
-    .update({ is_active: active, updated_at: new Date().toISOString() })
-    .eq("user_id", userId);
-
-  if (error) {
-    alert("Could not update user: " + error.message);
-    return;
-  }
-  await loadAdminUsers();
-}
-window.adminToggleUserActive = adminToggleUserActive;
-
-function initAdminPasswordResetControls() {
-  const btn = document.getElementById("adminSendResetBtn");
-  if (btn) btn.onclick = adminSendPasswordReset;
-
-  const tempBtn = document.getElementById("adminSetTempPasswordBtn");
-  if (tempBtn) tempBtn.onclick = adminSetTemporaryPassword;
-
-  const refreshBtn = document.getElementById("refreshUsersBtn");
-  if (refreshBtn) refreshBtn.onclick = loadAdminUsers;
-
-  const search = document.getElementById("adminUserSearchInput");
-  if (search) search.oninput = () => renderAdminUsers(adminUsersCache);
-}
-
-function initAdminUsersControls() {
-  const btn = document.getElementById("refreshUsersBtn");
-  if (btn) btn.onclick = loadAdminUsers;
-}
-
-function showForcePasswordChangeModal() {
-  const modal = document.getElementById("forcePasswordChangeModal");
-  if (modal) modal.classList.remove("hidden");
-}
-
-function setForcedPasswordStatus(text) {
-  const el = document.getElementById("forcedPasswordStatus");
-  if (el) el.textContent = text || "";
-}
-
-async function checkForcedPasswordChange() {
-  if (!supabaseClient || !currentUser) return;
-
-  const { data, error } = await supabaseClient
-    .from("user_profiles")
-    .select("must_change_password,is_active")
-    .eq("user_id", currentUser.id)
-    .maybeSingle();
-
-  if (error || !data) return;
-
-  if (data.is_active === false) {
-    alert("This account has been disabled. Contact your admin.");
-    await supabaseClient.auth.signOut();
-    location.reload();
-    return;
-  }
-
-  if (data.must_change_password) {
-    showForcePasswordChangeModal();
-  }
-}
-
-async function saveForcedNewPassword() {
-  if (!supabaseClient || !currentUser) return;
-
-  const pass = document.getElementById("forcedNewPasswordInput")?.value || "";
-  const confirm = document.getElementById("forcedConfirmPasswordInput")?.value || "";
-
-  if (pass.length < 6) {
-    setForcedPasswordStatus("Password must be at least 6 characters.");
-    return;
-  }
-  if (pass !== confirm) {
-    setForcedPasswordStatus("Passwords do not match.");
-    return;
-  }
-
-  setForcedPasswordStatus("Saving new password...");
-
-  const { error } = await supabaseClient.auth.updateUser({ password: pass });
-  if (error) {
-    setForcedPasswordStatus("Failed: " + error.message);
-    return;
-  }
-
-  await supabaseClient
-    .from("user_profiles")
-    .update({ must_change_password: false, updated_at: new Date().toISOString() })
-    .eq("user_id", currentUser.id);
-
-  setForcedPasswordStatus("Password updated.");
-  setTimeout(() => location.reload(), 700);
-}
-
-function initForcedPasswordControls() {
-  const btn = document.getElementById("forcedSavePasswordBtn");
-  if (btn) btn.onclick = saveForcedNewPassword;
-}
-
-// Password reset
-function isRecoveryUrl() {
-  const hash = window.location.hash || "";
-  const search = window.location.search || "";
-  return hash.includes("type=recovery") || search.includes("type=recovery") || hash.includes("access_token=");
-}
-
-function showPasswordResetModal() {
-  const modal = document.getElementById("passwordResetModal");
-  if (modal) modal.classList.remove("hidden");
-}
-
-function hidePasswordResetModal() {
-  const modal = document.getElementById("passwordResetModal");
-  if (modal) modal.classList.add("hidden");
-}
-
-function setPasswordResetStatus(text) {
-  const el = document.getElementById("passwordResetStatus");
-  if (el) el.textContent = text || "";
-}
-
-async function sendPasswordReset() {
-  if (!supabaseClient) {
-    alert("Supabase is not connected. Check config.js.");
-    return;
-  }
-
-  const email = (document.getElementById("emailInput")?.value || "").trim();
-  if (!email) {
-    alert("Enter the user's email first.");
-    return;
-  }
-
-  const redirectTo = window.location.origin + window.location.pathname + "?v=26";
-
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-    redirectTo
-  });
-
-  if (error) {
-    alert("Password reset failed: " + error.message);
-    return;
-  }
-
-  alert("Password reset email sent to " + email + ".");
-}
-
-async function saveNewPassword() {
-  if (!supabaseClient) return;
-
-  const pass = document.getElementById("newPasswordInput")?.value || "";
-  const confirm = document.getElementById("confirmPasswordInput")?.value || "";
-
-  if (pass.length < 6) {
-    setPasswordResetStatus("Password must be at least 6 characters.");
-    return;
-  }
-
-  if (pass !== confirm) {
-    setPasswordResetStatus("Passwords do not match.");
-    return;
-  }
-
-  setPasswordResetStatus("Saving new password...");
-
-  const { error } = await supabaseClient.auth.updateUser({ password: pass });
-
-  if (error) {
-    setPasswordResetStatus("Failed: " + error.message);
-    return;
-  }
-
-  setPasswordResetStatus("Password updated.");
-  setTimeout(() => {
-    hidePasswordResetModal();
-    window.history.replaceState({}, document.title, window.location.origin + window.location.pathname + "?v=26");
-  }, 900);
-}
-
-function initPasswordResetControls() {
-  const resetBtn = document.getElementById("resetPasswordBtn");
-  if (resetBtn) resetBtn.onclick = sendPasswordReset;
-
-  const saveBtn = document.getElementById("saveNewPasswordBtn");
-  if (saveBtn) saveBtn.onclick = saveNewPassword;
-
-  const cancelBtn = document.getElementById("cancelNewPasswordBtn");
-  if (cancelBtn) cancelBtn.onclick = hidePasswordResetModal;
-
-  if (isRecoveryUrl()) {
-    setTimeout(showPasswordResetModal, 800);
-  }
-}
-
-
-// Auth
-async function refreshAuth() {
-  if (!supabaseClient) {
-    document.getElementById("authStatus").textContent = "Local-only mode: add Supabase URL/key in config.js for login.";
-    document.getElementById("adminBtn").classList.add("hidden");
-    return;
-  }
-
-  const { data } = await supabaseClient.auth.getUser();
-  currentUser = data?.user || null;
-
-  if (currentUser) {
-    await checkAdminStatus();
-    await loadUserProfile();
-  } else {
-    isAdmin = false;
-    syncProfileInputs();
-  }
-
-  document.getElementById("loginBtn").textContent = currentUser ? "Account" : "Login";
-  document.getElementById("adminBtn").classList.toggle("hidden", !isAdmin);
-  document.getElementById("signOutBtn").classList.toggle("hidden", !currentUser);
-  document.getElementById("authStatus").textContent = currentUser
-    ? `Signed in: ${currentUser.email}${isAdmin ? " — Admin" : ""}`
-    : "Not signed in";
-
-  if (currentUser) {
-    await loadCloudData();
-    await checkForcedPasswordChange();
-    subscribeRealtime();
-    startTeamLocationRefresh();
-    startCoverageSyncRefresh();
-  }
-}
-document.getElementById("signInBtn").onclick = async () => {
-  if (!supabaseClient) return refreshAuth();
-  const email = document.getElementById("emailInput").value.trim();
-  const password = document.getElementById("passwordInput").value;
-  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-  document.getElementById("authStatus").textContent = error ? error.message : "Signed in.";
-  await refreshAuth();
-};
-document.getElementById("signUpBtn").onclick = async () => {
-  if (!supabaseClient) return refreshAuth();
-  const email = document.getElementById("emailInput").value.trim();
-  const password = document.getElementById("passwordInput").value;
-  const { error } = await supabaseClient.auth.signUp({ email, password });
-  document.getElementById("authStatus").textContent = error ? error.message : "Account created. Check email if confirmation is enabled.";
-};
-document.getElementById("signOutBtn").onclick = async () => {
-  if (supabaseClient) await supabaseClient.auth.signOut();
-  currentUser = null;
-  await refreshAuth();
-};
-
-// Admin team editor
-function renderTeamsEditor() {
-  document.getElementById("teamCountInput").value = state.teams.length;
-  document.getElementById("teamsEditor").innerHTML = state.teams.map((t, i) => `
-    <div class="teamRow">
-      <input id="team_name_${i}" value="${t.name}" />
-      <input id="team_color_${i}" type="color" value="${t.color}" />
-    </div>
-  `).join("");
-}
-document.getElementById("applyTeamCountBtn").onclick = () => {
-  if (!isAdmin) {
-    alert("Only the admin can change team count.");
-    return;
-  }
-  const n = Math.max(1, Math.min(12, Number(document.getElementById("teamCountInput").value || 6)));
-  while (state.teams.length < n) {
-    const i = state.teams.length + 1;
-    state.teams.push({ id:`team${i}`, name:`Team ${i}`, color:["#2563eb","#9333ea","#ec4899","#0f766e","#f59e0b","#22c55e"][state.teams.length % 6] });
-  }
-  state.teams = state.teams.slice(0, n);
-  renderTeamsEditor();
-  saveLocal();
-};
-document.getElementById("saveTeamsBtn").onclick = async () => {
-  if (!isAdmin) {
-    alert("Only the admin can save team settings.");
-    return;
-  }
-  state.teams = state.teams.map((t, i) => ({
-    id: t.id,
-    name: document.getElementById(`team_name_${i}`).value.trim() || `Team ${i+1}`,
-    color: document.getElementById(`team_color_${i}`).value,
-  }));
-  saveLocal();
-  renderTeamsEditor();
-  refreshMap();
-  if (supabaseClient && currentUser) {
-    await supabaseClient.from("teams").upsert(state.teams.map((t,i) => ({
-      id:t.id, name:t.name, color:t.color, sort_order:i
-    })));
-  }
-};
-
-// UI
-function toggle(id) { document.getElementById(id).classList.toggle("hidden"); }
-document.getElementById("loginBtn").onclick = () => toggle("authPanel");
-document.getElementById("closeAuthBtn").onclick = () => toggle("authPanel");
-document.getElementById("adminBtn").onclick = () => {
-  if (!isAdmin) {
-    alert("Admin controls are only available to the approved admin account.");
-    return;
-  }
-  renderTeamsEditor();
-  toggle("adminPanel");
-};
-document.getElementById("closeAdminBtn").onclick = () => toggle("adminPanel");
-document.getElementById("menuBtn").onclick = () => toggle("menuPanel");
-document.getElementById("closeMenuBtn").onclick = () => toggle("menuPanel");
-document.getElementById("applyPerfBtn").onclick = () => {
-  state.settings.boundaryMode = document.getElementById("zipBoundaryMode").value;
-  state.settings.labelsMode = document.getElementById("zipLabelsMode").value;
-  state.settings.zipZoom = Number(document.getElementById("zipZoomInput").value || 9);
-  saveLocal();
-  scheduleRender();
-  updateSelectedInfo();
-};
-document.getElementById("saveTimerBtn").onclick = async () => {
-  if (!isAdmin) {
-    alert("Only the admin can change timer settings.");
-    return;
-  }
-
-  state.settings.timeMode = document.getElementById("timeMode").value;
-  state.settings.threshold = Number(document.getElementById("thresholdInput").value || 3);
-  saveLocal();
-  refreshMap();
-
-  if (supabaseClient && currentUser) {
-    const { error } = await supabaseClient.from("app_settings").upsert({
-      id: "global",
-      time_mode: state.settings.timeMode,
-      threshold: state.settings.threshold,
-      updated_by: currentUser.id,
-      updated_at: new Date().toISOString()
-    });
-    if (error) alert("Could not save timer settings: " + error.message);
-  }
-};
-
-if (document.getElementById("saveUserColorBtn")) document.getElementById("saveUserColorBtn").onclick = () => {
-  state.settings.userColor = document.getElementById("userColorInput").value || "#22c55e";
-  saveLocal();
-};
-
-if (document.getElementById("startDrawBtn")) document.getElementById("startDrawBtn").onclick = startFreehandDrawing;
-if (document.getElementById("finishDrawBtn")) document.getElementById("finishDrawBtn").onclick = finishFreehandDrawing;
-if (document.getElementById("cancelDrawBtn")) document.getElementById("cancelDrawBtn").onclick = cancelFreehandDrawing;
-
-const drawFab = document.getElementById("drawFab");
-const drawPanel = document.getElementById("drawPanel");
-if (drawFab && drawPanel) {
-  drawFab.onclick = () => drawPanel.classList.toggle("hidden");
-}
-const closeDrawPanelBtn = document.getElementById("closeDrawPanelBtn");
-if (closeDrawPanelBtn) closeDrawPanelBtn.onclick = () => drawPanel.classList.add("hidden");
-
-const saveUserIdentityBtn = document.getElementById("saveUserIdentityBtn");
-if (saveUserIdentityBtn) {
-  saveUserIdentityBtn.onclick = saveUserProfile;
-}
-
-const saveProfileBtn = document.getElementById("saveProfileBtn");
-if (saveProfileBtn) {
-  saveProfileBtn.onclick = saveUserProfile;
-}
-
-const applyCoverageFilterBtn = document.getElementById("applyCoverageFilterBtn");
-if (applyCoverageFilterBtn) {
-  applyCoverageFilterBtn.onclick = () => {
-    state.settings.coverageFilterMode = document.getElementById("coverageFilterMode").value;
-    state.settings.coverageFilterTag = document.getElementById("coverageFilterTag").value.trim();
-    saveLocal();
-    renderCoverageAreas();
-  };
-}
-
-const clearCoverageFilterBtn = document.getElementById("clearCoverageFilterBtn");
-if (clearCoverageFilterBtn) {
-  clearCoverageFilterBtn.onclick = () => {
-    state.settings.coverageFilterMode = "all";
-    state.settings.coverageFilterTag = "";
-    document.getElementById("coverageFilterMode").value = "all";
-    document.getElementById("coverageFilterTag").value = "";
-    saveLocal();
-    renderCoverageAreas();
-  };
-}
-const startDrawBtnFab = document.getElementById("startDrawBtnFab");
-if (startDrawBtnFab) startDrawBtnFab.onclick = startFreehandDrawing;
-const finishDrawBtnFab = document.getElementById("finishDrawBtnFab");
-if (finishDrawBtnFab) finishDrawBtnFab.onclick = finishFreehandDrawing;
-const cancelDrawBtnFab = document.getElementById("cancelDrawBtnFab");
-if (cancelDrawBtnFab) cancelDrawBtnFab.onclick = cancelFreehandDrawing;
-
-
-function initControls() {
-  ensureCoverageState();
-  const colorInput = document.getElementById("userColorInput");
-  if (colorInput) colorInput.value = state.settings.userColor || "#22c55e";
-  const fabColorInput = document.getElementById("userColorInputFab");
-  if (fabColorInput) fabColorInput.value = state.settings.userColor || "#22c55e";
-  syncProfileInputs();
-  const filterMode = document.getElementById("coverageFilterMode");
-  if (filterMode) filterMode.value = state.settings.coverageFilterMode || "all";
-  const filterTag = document.getElementById("coverageFilterTag");
-  if (filterTag) filterTag.value = state.settings.coverageFilterTag || "";
-  document.getElementById("zipBoundaryMode").value = state.settings.boundaryMode === "on" ? "auto" : state.settings.boundaryMode;
-  document.getElementById("zipLabelsMode").value = state.settings.labelsMode;
-  document.getElementById("zipZoomInput").value = state.settings.zipZoom;
-  document.getElementById("timeMode").value = state.settings.timeMode;
-  document.getElementById("thresholdInput").value = state.settings.threshold;
-  renderTeamsEditor();
-}
-map.on("popupclose", () => { zipPopupOpen = false; });
-map.on("moveend zoomend", () => {
-  if (!shouldShowMapWorkLayers()) {
+  function renderZips(){
     if (zipLayer) {
       map.removeLayer(zipLayer);
       zipLayer = null;
     }
+
+    if (!zipData || map.getZoom() < Number(state.settings.zipZoom || 10)) return;
+
+    const bounds = map.getBounds().pad(0.25);
+    const features = (zipData.features || []).filter(f => featureInBounds(f, bounds)).slice(0, 900);
+
+    zipLayer = L.geoJSON({ type:"FeatureCollection", features }, {
+      pane:"zipPane",
+      style: f => {
+        const zip = zipCode(f);
+        const t = state.territories[zip];
+        return {
+          color: selectedZip === zip ? "#2563eb" : "#000",
+          weight: selectedZip === zip ? 2.3 : (map.getZoom() >= 12 ? 1.4 : 0.85),
+          opacity: 1,
+          fillColor: t?.last_worked ? "#9DE600" : "transparent",
+          fillOpacity: t?.last_worked ? 0.35 : 0.01,
+          interactive: true
+        };
+      },
+      onEachFeature: (f, layer) => {
+        const zip = zipCode(f);
+        layer.on("click", () => openZipMenu(zip));
+      }
+    }).addTo(map);
+  }
+
+  function renderCoverage(){
     if (coverageLayer) {
       map.removeLayer(coverageLayer);
       coverageLayer = null;
     }
-    if (coverageTagLayer) {
-      map.removeLayer(coverageTagLayer);
-      coverageTagLayer = null;
-    }
-    updateSelectedInfo();
-    return;
+
+    const show = state.settings.coverageMode === "always" ||
+      (state.settings.coverageMode === "with_zips" && map.getZoom() >= Number(state.settings.zipZoom || 10));
+
+    if (!show) return;
+
+    const features = Object.values(state.coverageAreas || {})
+      .filter(a => a.geometry)
+      .map(a => ({ type:"Feature", properties:{ id:a.id }, geometry:a.geometry }));
+
+    coverageLayer = L.geoJSON({ type:"FeatureCollection", features }, {
+      pane:"coveragePane",
+      style: f => {
+        const a = state.coverageAreas[f.properties.id];
+        return {
+          color: a?.team_color || a?.color || "#22c55e",
+          weight: 2,
+          fillColor: a?.color || "#22c55e",
+          fillOpacity: 0.35
+        };
+      }
+    }).addTo(map);
   }
 
-  scheduleRender();
-  renderCoverageAreas();
-});
-initControls();
-renderCoverageAreas();
-refreshAuth();
-loadZipData();
+  async function initAuth(){
+    if (!supabaseClient) return;
+    const { data } = await supabaseClient.auth.getUser();
+    currentUser = data?.user || null;
+    if (currentUser) {
+      await loadProfile();
+      await checkAdmin();
+      await loadCloudData();
+    }
+  }
 
+  async function loadProfile(){
+    const { data } = await supabaseClient
+      .from("user_profiles")
+      .select("*")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
 
-(function setupMovableDrawFab(){
-  const fab = document.getElementById("drawFab");
-  if (!fab) return;
-  let dragging = false, moved = false, startX = 0, startY = 0, right = 18, bottom = 22;
-  fab.addEventListener("pointerdown", ev => {
-    dragging = true; moved = false; startX = ev.clientX; startY = ev.clientY;
-    fab.setPointerCapture?.(ev.pointerId);
-  });
-  fab.addEventListener("pointermove", ev => {
-    if (!dragging) return;
-    const dx = ev.clientX - startX, dy = ev.clientY - startY;
-    if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
-    startX = ev.clientX; startY = ev.clientY;
-    const rect = fab.getBoundingClientRect();
-    right = Math.max(8, Math.min(window.innerWidth - 66, window.innerWidth - rect.right - dx));
-    bottom = Math.max(8, Math.min(window.innerHeight - 66, window.innerHeight - rect.bottom - dy));
-    fab.style.right = right + "px";
-    fab.style.bottom = bottom + "px";
-  });
-  fab.addEventListener("pointerup", ev => {
-    dragging = false;
-    if (moved) ev.preventDefault();
-  });
-})();
+    if (data) {
+      state.profile.display_name = data.display_name || "";
+      state.profile.color = data.color || "#22c55e";
+      state.profile.preferred_team_id = data.preferred_team_id || state.teams[0]?.id || "team1";
+      saveState();
+    }
+  }
 
+  async function checkAdmin(){
+    const { data } = await supabaseClient
+      .from("admins")
+      .select("user_id")
+      .eq("user_id", currentUser.id)
+      .maybeSingle();
+    isAdmin = !!data;
+  }
 
-// Mobile UI stability: keep app chrome fixed and prevent panels from riding with map zoom.
-function closeLeafletPopupOnZoom() {
-  try { map.closePopup(); } catch {}
-}
-map.on("zoomstart", closeLeafletPopupOnZoom);
+  async function loadCloudData(){
+    if (!supabaseClient) return;
 
-function stableMobileViewportRefresh() {
-  setTimeout(() => {
-    try { map.invalidateSize(false); } catch {}
-  }, 120);
-}
-window.addEventListener("resize", stableMobileViewportRefresh);
-window.addEventListener("orientationchange", stableMobileViewportRefresh);
-document.addEventListener("visibilitychange", () => {
-  if (!document.hidden) stableMobileViewportRefresh();
-});
+    const teams = await supabaseClient.from("teams").select("*").order("sort_order", { ascending:true });
+    if (!teams.error && teams.data?.length) {
+      state.teams = teams.data.map(t => ({ id:t.id, name:t.name, color:t.color }));
+    }
 
-// Prevent menu panels and floating drawing menu from dragging/zooming the map underneath.
-["authPanel", "adminPanel", "menuPanel", "drawPanel"].forEach(id => {
-  const el = document.getElementById(id);
-  if (!el) return;
-  ["touchstart", "touchmove", "pointerdown", "pointermove", "wheel"].forEach(evt => {
-    el.addEventListener(evt, e => e.stopPropagation(), { passive: true });
-  });
-});
+    const territories = await supabaseClient.from("territories").select("*");
+    if (!territories.error && territories.data) {
+      state.territories = {};
+      territories.data.forEach(t => state.territories[t.zip] = t);
+    }
 
+    const coverage = await supabaseClient.from("coverage_areas").select("*");
+    if (!coverage.error && coverage.data) {
+      state.coverageAreas = {};
+      coverage.data.forEach(a => state.coverageAreas[a.id] = a);
+    }
 
-function runAppHealthCheck() {
-  const warnings = [];
-  if (!document.getElementById("map")) warnings.push("Map container missing.");
-  if (!document.getElementById("gpsFab")) warnings.push("GPS button missing.");
-  if (!window.L) warnings.push("Leaflet did not load.");
-  if (!window.supabase) warnings.push("Supabase library did not load.");
-  if (warnings.length) console.warn("Territory Manager health check:", warnings.join(" "));
-}
+    saveState();
+    refreshMap();
+  }
 
-setTimeout(runAppHealthCheck, 1200);
+  async function saveTerritory(zip, patch){
+    state.territories[zip] = { ...(state.territories[zip] || {}), zip, ...patch, updated_at:new Date().toISOString() };
+    saveState();
 
+    if (supabaseClient && currentUser) {
+      await supabaseClient.from("territories").upsert({
+        ...state.territories[zip],
+        updated_by: currentUser.id,
+        updated_at: new Date().toISOString()
+      });
+    }
 
-function initAppTools() {
-  const reloadBtn = document.getElementById("reloadCloudBtn");
-  if (reloadBtn) {
-    reloadBtn.onclick = async () => {
-      if (currentUser && supabaseClient) await loadCloudData();
-      refreshMap();
-      alert("Cloud data reloaded.");
+    refreshMap();
+  }
+
+  function teamOptions(selected){
+    return state.teams.map(t => `<option value="${t.id}" ${selected === t.id ? "selected" : ""}>${t.name}</option>`).join("");
+  }
+
+  function openZipMenu(zip){
+    selectedZip = zip;
+    const t = state.territories[zip] || {};
+    showSheet("ZIP " + zip, `
+      <div class="card">
+        <h3>ZIP ${zip}</h3>
+        <div class="status" id="zipStatus">Last worked: ${t.last_worked || "Not set"}</div>
+        <div class="row">
+          <button id="markTodayBtn">Today</button>
+          <button id="markYesterdayBtn" class="secondary">Yesterday</button>
+        </div>
+        <label>Past/custom date</label>
+        <input id="zipDateInput" type="date" value="${t.last_worked || ""}">
+        <button id="saveZipDateBtn">Save Date</button>
+
+        <label>Owner team</label>
+        <select id="ownerTeamInput">${teamOptions(t.owner_team_id || state.teams[0]?.id)}</select>
+
+        <label>Pass to team</label>
+        <select id="handoffTeamInput">${teamOptions(t.handoff_team_id || state.teams[1]?.id)}</select>
+        <button id="saveZipTeamsBtn">Save Teams</button>
+
+        <label>Notes</label>
+        <textarea id="zipNotesInput" rows="3">${t.notes || ""}</textarea>
+        <button id="saveZipNotesBtn">Save Notes</button>
+      </div>
+    `);
+
+    const updateStatus = () => {
+      const el = document.getElementById("zipStatus");
+      if (el) el.textContent = "Last worked: " + (state.territories[zip]?.last_worked || "Not set");
+    };
+
+    document.getElementById("markTodayBtn").onclick = async () => {
+      await saveTerritory(zip, { last_worked:new Date().toISOString().slice(0,10) });
+      updateStatus();
+    };
+    document.getElementById("markYesterdayBtn").onclick = async () => {
+      const d = new Date(); d.setDate(d.getDate()-1);
+      await saveTerritory(zip, { last_worked:d.toISOString().slice(0,10) });
+      updateStatus();
+    };
+    document.getElementById("saveZipDateBtn").onclick = async () => {
+      await saveTerritory(zip, { last_worked:document.getElementById("zipDateInput").value || null });
+      updateStatus();
+    };
+    document.getElementById("saveZipTeamsBtn").onclick = async () => {
+      await saveTerritory(zip, {
+        owner_team_id:document.getElementById("ownerTeamInput").value,
+        handoff_team_id:document.getElementById("handoffTeamInput").value
+      });
+      alert("Teams saved.");
+    };
+    document.getElementById("saveZipNotesBtn").onclick = async () => {
+      await saveTerritory(zip, { notes:document.getElementById("zipNotesInput").value });
+      alert("Notes saved.");
     };
   }
 
-  const clearBtn = document.getElementById("clearLocalCacheBtn");
-  if (clearBtn) {
-    clearBtn.onclick = () => {
-      if (!confirm("Clear local cache on this device? Cloud data will stay saved.")) return;
+  function openAccount(){
+    showSheet("Account", `
+      <div class="card">
+        <h3>Login</h3>
+        <label>Email</label>
+        <input id="emailInput" type="email" placeholder="email@example.com">
+        <label>Password</label>
+        <input id="passwordInput" type="password" placeholder="password">
+        <div class="row">
+          <button id="signInBtn">Sign In</button>
+          <button id="signUpBtn" class="secondary">Create Account</button>
+        </div>
+        <button id="signOutBtn" class="danger ${currentUser ? "" : "hidden"}">Sign Out</button>
+        <div class="status">${currentUser ? "Signed in as " + currentUser.email : "Not signed in."}</div>
+      </div>
+
+      <div class="card">
+        <h3>My Profile</h3>
+        <label>Name/tag</label>
+        <input id="profileNameInput" value="${state.profile.display_name || ""}" placeholder="Example: Brandon">
+        <label>Drawing color</label>
+        <input id="profileColorInput" type="color" value="${state.profile.color || "#22c55e"}">
+        <label>Team</label>
+        <select id="profileTeamInput">${teamOptions(state.profile.preferred_team_id)}</select>
+        <button id="saveProfileBtn">Save Profile</button>
+      </div>
+    `);
+
+    document.getElementById("signInBtn").onclick = async () => {
+      const email = document.getElementById("emailInput").value.trim();
+      const password = document.getElementById("passwordInput").value;
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (error) return alert(error.message);
+      location.reload();
+    };
+
+    document.getElementById("signUpBtn").onclick = async () => {
+      const email = document.getElementById("emailInput").value.trim();
+      const password = document.getElementById("passwordInput").value;
+      const { error } = await supabaseClient.auth.signUp({ email, password });
+      if (error) return alert(error.message);
+      alert("Account created.");
+    };
+
+    document.getElementById("signOutBtn").onclick = async () => {
+      await supabaseClient.auth.signOut();
+      location.reload();
+    };
+
+    document.getElementById("saveProfileBtn").onclick = async () => {
+      state.profile.display_name = document.getElementById("profileNameInput").value.trim();
+      state.profile.color = document.getElementById("profileColorInput").value;
+      state.profile.preferred_team_id = document.getElementById("profileTeamInput").value;
+      saveState();
+
+      if (supabaseClient && currentUser) {
+        const { error } = await supabaseClient.from("user_profiles").upsert({
+          user_id: currentUser.id,
+          email: currentUser.email,
+          display_name: state.profile.display_name || currentUser.email,
+          color: state.profile.color,
+          preferred_team_id: state.profile.preferred_team_id,
+          updated_at: new Date().toISOString()
+        });
+        if (error) alert(error.message);
+        else alert("Profile saved.");
+      }
+    };
+  }
+
+  function openSettings(){
+    showSheet("Settings", `
+      <div class="card">
+        <h3>Map Display</h3>
+        <label>Show ZIP/freehand starting at zoom</label>
+        <input id="zipZoomInput" type="number" min="5" max="15" value="${state.settings.zipZoom}">
+        <label>Freehand visibility</label>
+        <select id="coverageModeInput">
+          <option value="with_zips" ${state.settings.coverageMode === "with_zips" ? "selected" : ""}>With ZIP lines</option>
+          <option value="always" ${state.settings.coverageMode === "always" ? "selected" : ""}>Always show</option>
+          <option value="off" ${state.settings.coverageMode === "off" ? "selected" : ""}>Off</option>
+        </select>
+        <button id="saveDisplayBtn">Save Display Settings</button>
+      </div>
+
+      <div class="card">
+        <h3>Location</h3>
+        <button id="enableLocationBtn">Enable Location</button>
+        <button id="startTrackingBtn" class="secondary">Start Live Tracking</button>
+        <button id="stopTrackingBtn" class="danger">Stop Tracking</button>
+        <label>Share my location</label>
+        <select id="shareLocationInput">
+          <option value="off" ${state.settings.shareLocation === "off" ? "selected" : ""}>Off</option>
+          <option value="on" ${state.settings.shareLocation === "on" ? "selected" : ""}>On</option>
+        </select>
+        <div id="locationStatus" class="status">Location not active.</div>
+      </div>
+
+      <div class="card">
+        <h3>App Tools</h3>
+        <button id="reloadCloudBtn" class="secondary">Reload Cloud Data</button>
+        <button id="clearCacheBtn" class="danger">Clear Local Cache</button>
+        <div class="status">V2 fixed preview</div>
+      </div>
+    `);
+
+    document.getElementById("saveDisplayBtn").onclick = () => {
+      state.settings.zipZoom = Number(document.getElementById("zipZoomInput").value || 10);
+      state.settings.coverageMode = document.getElementById("coverageModeInput").value;
+      saveState();
+      refreshMap();
+      alert("Display settings saved.");
+    };
+
+    document.getElementById("shareLocationInput").onchange = e => {
+      state.settings.shareLocation = e.target.value;
+      saveState();
+    };
+
+    document.getElementById("enableLocationBtn").onclick = () => locateMe(true);
+    document.getElementById("startTrackingBtn").onclick = startTracking;
+    document.getElementById("stopTrackingBtn").onclick = stopTracking;
+    document.getElementById("reloadCloudBtn").onclick = async () => {
+      await loadCloudData();
+      alert("Cloud data reloaded.");
+    };
+    document.getElementById("clearCacheBtn").onclick = () => {
+      if (!confirm("Clear local cache on this device? Cloud data stays saved.")) return;
       localStorage.removeItem(STORAGE_KEY);
-      localStorage.removeItem("tm_zip_geojson_cache");
-      alert("Local cache cleared. Reloading app.");
+      localStorage.removeItem("tm_v2_zip_cache");
       location.reload();
     };
   }
-}
+
+  async function locateMe(center){
+    if (!navigator.geolocation) return alert("Location not supported.");
+    setLocationStatus("Finding location…");
+    navigator.geolocation.getCurrentPosition(
+      pos => handlePosition(pos, center),
+      err => {
+        setLocationStatus("Location failed: " + err.message);
+        alert("Location failed: " + err.message);
+      },
+      { enableHighAccuracy:true, timeout:15000, maximumAge:5000 }
+    );
+  }
+
+  function setLocationStatus(text){
+    const el = document.getElementById("locationStatus");
+    if (el) el.textContent = text;
+  }
+
+  async function handlePosition(pos, center){
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const accuracy = pos.coords.accuracy || 0;
+
+    if (!myLocationMarker) {
+      myLocationMarker = L.marker([lat,lng], {
+        pane:"tagPane",
+        icon:L.divIcon({
+          className:"",
+          html:'<div class="myLocationDot"></div>',
+          iconSize:[24,24],
+          iconAnchor:[12,12]
+        })
+      }).addTo(map);
+    } else {
+      myLocationMarker.setLatLng([lat,lng]);
+    }
+
+    if (center) map.setView([lat,lng], Math.max(map.getZoom(), 14));
+    setLocationStatus("Location active. Accuracy: " + Math.round(accuracy) + "m");
+
+    if (supabaseClient && currentUser && state.settings.shareLocation === "on") {
+      await supabaseClient.from("user_locations").upsert({
+        user_id: currentUser.id,
+        email: currentUser.email,
+        display_name: state.profile.display_name || currentUser.email,
+        lat,lng,accuracy,
+        updated_at:new Date().toISOString()
+      });
+    }
+  }
+
+  function startTracking(){
+    if (!navigator.geolocation) return alert("Location not supported.");
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = navigator.geolocation.watchPosition(pos => handlePosition(pos, false), err => setLocationStatus(err.message), {
+      enableHighAccuracy:true, timeout:20000, maximumAge:3000
+    });
+    setLocationStatus("Live tracking started.");
+  }
+
+  function stopTracking(){
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+    setLocationStatus("Live tracking stopped.");
+  }
+
+  async function openAdmin(){
+    showSheet("Admin Center", `
+      <div class="card">
+        <h3>Users</h3>
+        <input id="userSearchInput" placeholder="Search users">
+        <button id="refreshUsersBtn">Refresh Users</button>
+        <div id="usersList" class="status">No users loaded.</div>
+      </div>
+
+      <div class="card">
+        <h3>Temporary Password</h3>
+        <label>User email</label>
+        <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
+        <label>Temporary password</label>
+        <input id="adminTempPasswordInput" value="Welcome123!">
+        <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
+        <div id="adminResetStatus" class="status"></div>
+      </div>
+
+      <div class="card">
+        <h3>Teams</h3>
+        <div id="teamsEditor"></div>
+        <button id="saveTeamsBtn">Save Teams</button>
+      </div>
+    `);
+
+    document.getElementById("refreshUsersBtn").onclick = loadUsers;
+    document.getElementById("userSearchInput").oninput = renderUsers;
+    document.getElementById("adminSetTempPasswordBtn").onclick = setTemporaryPassword;
+    renderTeams();
+    document.getElementById("saveTeamsBtn").onclick = saveTeams;
+  }
+
+  async function loadUsers(){
+    if (!supabaseClient || !isAdmin) return alert("Admin only.");
+    const { data, error } = await supabaseClient
+      .from("user_profiles")
+      .select("user_id,email,display_name,role,is_active,must_change_password,last_seen")
+      .order("email", { ascending:true });
+
+    if (error) return alert(error.message);
+    state.users = data || [];
+    renderUsers();
+  }
+
+  function renderUsers(){
+    const q = (document.getElementById("userSearchInput")?.value || "").toLowerCase();
+    const el = document.getElementById("usersList");
+    const users = (state.users || []).filter(u => `${u.email || ""} ${u.display_name || ""}`.toLowerCase().includes(q));
+    if (!users.length) {
+      el.innerHTML = "No users found.";
+      return;
+    }
+    el.innerHTML = users.map(u => `
+      <div class="userRow">
+        <strong>${u.display_name || u.email || "Unknown"}</strong>
+        <div>${u.email || ""}</div>
+        <span class="badge">${u.role || "user"}</span>
+        <span class="badge">${u.is_active === false ? "Inactive" : "Active"}</span>
+        ${u.must_change_password ? '<span class="badge">Must change password</span>' : ""}
+        <button class="secondary" onclick="document.getElementById('adminResetEmailInput').value='${u.email || ""}'">Use Email</button>
+      </div>
+    `).join("");
+  }
+
+  function renderTeams(){
+    const el = document.getElementById("teamsEditor");
+    el.innerHTML = state.teams.map(t => `
+      <div class="card">
+        <label>${t.id} name</label>
+        <input id="teamName_${t.id}" value="${t.name}">
+        <label>${t.id} color</label>
+        <input id="teamColor_${t.id}" type="color" value="${t.color}">
+      </div>
+    `).join("");
+  }
+
+  async function saveTeams(){
+    state.teams = state.teams.map(t => ({
+      ...t,
+      name: document.getElementById("teamName_" + t.id).value,
+      color: document.getElementById("teamColor_" + t.id).value
+    }));
+    saveState();
+
+    if (supabaseClient) {
+      for (let i=0; i<state.teams.length; i++) {
+        const t = state.teams[i];
+        await supabaseClient.from("teams").upsert({
+          id:t.id,
+          name:t.name,
+          color:t.color,
+          sort_order:i
+        });
+      }
+    }
+    alert("Teams saved.");
+  }
+
+  async function setTemporaryPassword(){
+    if (!supabaseClient || !isAdmin) return alert("Admin only.");
+    const email = document.getElementById("adminResetEmailInput").value.trim();
+    const password = document.getElementById("adminTempPasswordInput").value.trim();
+    const status = document.getElementById("adminResetStatus");
+
+    if (!email || password.length < 6) return alert("Enter email and temporary password at least 6 characters.");
+    status.textContent = "Setting temporary password…";
+
+    const { data, error } = await supabaseClient.functions.invoke("admin-reset-password", {
+      body: { email, password }
+    });
+
+    if (error || data?.error) {
+      const msg = data?.error || error.message;
+      status.textContent = "Failed: " + msg;
+      return alert(msg);
+    }
+
+    status.textContent = "Temporary password set.";
+    alert("Temporary password successfully changed for " + email + ".");
+  }
+
+  function initControls(){
+    document.getElementById("closeSheetBtn").onclick = closeSheet;
+    document.getElementById("accountBtn").onclick = openAccount;
+    document.getElementById("adminBtn").onclick = openAdmin;
+    document.getElementById("settingsBtn").onclick = openSettings;
+    document.getElementById("gpsFab").onclick = () => {
+      openSettings();
+      setTimeout(() => locateMe(true), 50);
+    };
+    document.getElementById("drawFab").onclick = () => {
+      showSheet("Coverage Drawing", `
+        <div class="card">
+          <h3>Drawing V2</h3>
+          <div class="status">The V2 shell is now working. Next update will add the improved freehand drawing tool back into this smoother UI.</div>
+        </div>
+      `);
+    };
+  }
+
+  async function start(){
+    initControls();
+    initMap();
+    await initAuth();
+  }
+
+  window.addEventListener("error", e => {
+    console.error(e.error || e.message);
+    const box = document.getElementById("loadingBox");
+    if (box) {
+      box.classList.remove("hidden");
+      box.textContent = "App error. Check uploaded files.";
+    }
+  });
+
+  start();
+})();
