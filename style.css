@@ -677,3 +677,56 @@ body.drawing-active .drawFab{
   font-size:12px;
   margin-top:3px;
 }
+
+
+/* Admin Center v2 */
+.adminUsersList{
+  margin-top:10px;
+  max-height:320px;
+  overflow:auto;
+  border:1px solid #e7f1e8;
+  border-radius:14px;
+  background:#fff;
+}
+.adminUserRow{
+  padding:11px;
+  border-bottom:1px solid #eef5e6;
+}
+.adminUserRow:last-child{
+  border-bottom:none;
+}
+.adminUserRow strong{
+  display:block;
+  font-size:14px;
+}
+.adminUserMeta{
+  color:#555;
+  font-size:12px;
+  margin-top:3px;
+}
+.adminUserActions{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+.adminUserActions button{
+  width:auto!important;
+  min-height:34px!important;
+  padding:7px 9px!important;
+  font-size:12px!important;
+}
+.userBadge{
+  display:inline-block;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#f0ffd1;
+  border:1px solid #cbe992;
+  margin-right:4px;
+  font-size:11px;
+  font-weight:900;
+}
+.userBadge.danger{
+  background:#ffe5e9;
+  border-color:#ffb4c2;
+}

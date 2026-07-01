@@ -774,6 +774,7 @@ function subscribeRealtime() {
 initPasswordResetControls();
 initAdminPasswordResetControls();
 initAdminUsersControls();
+initForcedPasswordControls();
 initLocationControls();
 initAppTools();
 setTimeout(() => showLocationPermissionPrompt(false), 1200);
@@ -1412,32 +1413,65 @@ function drawPointFromEvent(e) {
 
 
 
-// Admin user list
+
+// Admin Center v2
+let adminUsersCache = [];
+
+function setAdminResetStatus(text) {
+  const el = document.getElementById("adminResetStatus");
+  if (el) el.textContent = text || "";
+}
+
+function adminUserMatchesSearch(user) {
+  const input = document.getElementById("adminUserSearchInput");
+  const q = (input?.value || "").trim().toLowerCase();
+  if (!q) return true;
+  return `${user.email || ""} ${user.display_name || ""}`.toLowerCase().includes(q);
+}
+
 function renderAdminUsers(users) {
   const el = document.getElementById("adminUsersList");
   if (!el) return;
 
-  if (!users || !users.length) {
-    el.innerHTML = "No users found yet.";
+  const filtered = (users || []).filter(adminUserMatchesSearch);
+
+  if (!filtered.length) {
+    el.innerHTML = "No users found.";
     return;
   }
 
-  el.innerHTML = users.map(u => {
+  el.innerHTML = filtered.map(u => {
     const name = u.display_name || u.email || "Unknown user";
     const email = u.email || "";
     const role = u.role || "user";
     const active = u.is_active === false ? "Inactive" : "Active";
     const lastSeen = u.last_seen ? new Date(u.last_seen).toLocaleString() : "Not tracked";
+    const mustChange = u.must_change_password ? '<span class="userBadge danger">Must change password</span>' : "";
     return `
       <div class="adminUserRow">
         <strong>${name}</strong>
         <div class="adminUserMeta">${email}</div>
-        <div class="adminUserMeta">Role: ${role} • ${active}</div>
+        <div class="adminUserMeta">
+          <span class="userBadge">${role}</span>
+          <span class="userBadge">${active}</span>
+          ${mustChange}
+        </div>
         <div class="adminUserMeta">Last seen: ${lastSeen}</div>
+        <div class="adminUserActions">
+          <button class="secondary" onclick="fillAdminResetEmail('${email}')">Use Email</button>
+          <button class="secondary" onclick="adminSetTemporaryPasswordFor('${email}')">Set Temp Password</button>
+          <button class="secondary" onclick="adminToggleUserActive('${u.user_id}', ${u.is_active === false ? "true" : "false"})">${u.is_active === false ? "Enable" : "Disable"}</button>
+        </div>
       </div>
     `;
   }).join("");
 }
+
+function fillAdminResetEmail(email) {
+  const input = document.getElementById("adminResetEmailInput");
+  if (input) input.value = email || "";
+}
+window.fillAdminResetEmail = fillAdminResetEmail;
 
 async function loadAdminUsers() {
   if (!isAdmin) {
@@ -1448,7 +1482,7 @@ async function loadAdminUsers() {
 
   const { data, error } = await supabaseClient
     .from("user_profiles")
-    .select("user_id,email,display_name,role,is_active,last_seen,updated_at")
+    .select("user_id,email,display_name,role,is_active,must_change_password,last_seen,updated_at")
     .order("email", { ascending: true });
 
   if (error) {
@@ -1457,19 +1491,8 @@ async function loadAdminUsers() {
     return;
   }
 
-  renderAdminUsers(data || []);
-}
-
-function initAdminUsersControls() {
-  const btn = document.getElementById("refreshUsersBtn");
-  if (btn) btn.onclick = loadAdminUsers;
-}
-
-
-// Admin password reset
-function setAdminResetStatus(text) {
-  const el = document.getElementById("adminResetStatus");
-  if (el) el.textContent = text || "";
+  adminUsersCache = data || [];
+  renderAdminUsers(adminUsersCache);
 }
 
 async function adminSendPasswordReset() {
@@ -1491,7 +1514,7 @@ async function adminSendPasswordReset() {
 
   setAdminResetStatus("Sending reset email...");
 
-  const redirectTo = window.location.origin + window.location.pathname + "?v=27";
+  const redirectTo = window.location.origin + window.location.pathname + "?v=29";
   const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
 
   if (error) {
@@ -1503,9 +1526,154 @@ async function adminSendPasswordReset() {
   setAdminResetStatus("Reset email sent to " + email + ".");
 }
 
+async function adminSetTemporaryPasswordFor(emailFromRow) {
+  const emailInput = document.getElementById("adminResetEmailInput");
+  if (emailFromRow && emailInput) emailInput.value = emailFromRow;
+  return adminSetTemporaryPassword();
+}
+window.adminSetTemporaryPasswordFor = adminSetTemporaryPasswordFor;
+
+async function adminSetTemporaryPassword() {
+  if (!isAdmin) {
+    alert("Only the admin can reset passwords.");
+    return;
+  }
+  if (!supabaseClient) {
+    alert("Supabase is not connected.");
+    return;
+  }
+
+  const email = (document.getElementById("adminResetEmailInput")?.value || "").trim();
+  const password = (document.getElementById("adminTempPasswordInput")?.value || "").trim();
+
+  if (!email) {
+    alert("Enter the user's email first.");
+    return;
+  }
+  if (!password || password.length < 6) {
+    alert("Temporary password must be at least 6 characters.");
+    return;
+  }
+
+  setAdminResetStatus("Setting temporary password...");
+
+  const { data, error } = await supabaseClient.functions.invoke("admin-reset-password", {
+    body: { email, password }
+  });
+
+  if (error || data?.error) {
+    const msg = data?.error || error?.message || "Unknown error";
+    setAdminResetStatus("Failed: " + msg);
+    alert("Temporary password failed: " + msg);
+    return;
+  }
+
+  setAdminResetStatus("Temporary password set. User must change password after login.");
+  await loadAdminUsers();
+}
+
+async function adminToggleUserActive(userId, active) {
+  if (!isAdmin || !supabaseClient) return;
+  const { error } = await supabaseClient
+    .from("user_profiles")
+    .update({ is_active: active, updated_at: new Date().toISOString() })
+    .eq("user_id", userId);
+
+  if (error) {
+    alert("Could not update user: " + error.message);
+    return;
+  }
+  await loadAdminUsers();
+}
+window.adminToggleUserActive = adminToggleUserActive;
+
 function initAdminPasswordResetControls() {
   const btn = document.getElementById("adminSendResetBtn");
   if (btn) btn.onclick = adminSendPasswordReset;
+
+  const tempBtn = document.getElementById("adminSetTempPasswordBtn");
+  if (tempBtn) tempBtn.onclick = adminSetTemporaryPassword;
+
+  const refreshBtn = document.getElementById("refreshUsersBtn");
+  if (refreshBtn) refreshBtn.onclick = loadAdminUsers;
+
+  const search = document.getElementById("adminUserSearchInput");
+  if (search) search.oninput = () => renderAdminUsers(adminUsersCache);
+}
+
+function initAdminUsersControls() {
+  const btn = document.getElementById("refreshUsersBtn");
+  if (btn) btn.onclick = loadAdminUsers;
+}
+
+function showForcePasswordChangeModal() {
+  const modal = document.getElementById("forcePasswordChangeModal");
+  if (modal) modal.classList.remove("hidden");
+}
+
+function setForcedPasswordStatus(text) {
+  const el = document.getElementById("forcedPasswordStatus");
+  if (el) el.textContent = text || "";
+}
+
+async function checkForcedPasswordChange() {
+  if (!supabaseClient || !currentUser) return;
+
+  const { data, error } = await supabaseClient
+    .from("user_profiles")
+    .select("must_change_password,is_active")
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
+
+  if (error || !data) return;
+
+  if (data.is_active === false) {
+    alert("This account has been disabled. Contact your admin.");
+    await supabaseClient.auth.signOut();
+    location.reload();
+    return;
+  }
+
+  if (data.must_change_password) {
+    showForcePasswordChangeModal();
+  }
+}
+
+async function saveForcedNewPassword() {
+  if (!supabaseClient || !currentUser) return;
+
+  const pass = document.getElementById("forcedNewPasswordInput")?.value || "";
+  const confirm = document.getElementById("forcedConfirmPasswordInput")?.value || "";
+
+  if (pass.length < 6) {
+    setForcedPasswordStatus("Password must be at least 6 characters.");
+    return;
+  }
+  if (pass !== confirm) {
+    setForcedPasswordStatus("Passwords do not match.");
+    return;
+  }
+
+  setForcedPasswordStatus("Saving new password...");
+
+  const { error } = await supabaseClient.auth.updateUser({ password: pass });
+  if (error) {
+    setForcedPasswordStatus("Failed: " + error.message);
+    return;
+  }
+
+  await supabaseClient
+    .from("user_profiles")
+    .update({ must_change_password: false, updated_at: new Date().toISOString() })
+    .eq("user_id", currentUser.id);
+
+  setForcedPasswordStatus("Password updated.");
+  setTimeout(() => location.reload(), 700);
+}
+
+function initForcedPasswordControls() {
+  const btn = document.getElementById("forcedSavePasswordBtn");
+  if (btn) btn.onclick = saveForcedNewPassword;
 }
 
 // Password reset
@@ -1632,6 +1800,7 @@ async function refreshAuth() {
 
   if (currentUser) {
     await loadCloudData();
+    await checkForcedPasswordChange();
     subscribeRealtime();
     startTeamLocationRefresh();
     startCoverageSyncRefresh();

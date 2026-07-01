@@ -68,7 +68,10 @@
         <div class="small">Admin tool: enter a user's email and send them a secure reset link.</div>
         <label>User email</label>
         <input id="adminResetEmailInput" type="email" placeholder="user@email.com">
-        <button id="adminSendResetBtn" class="secondary">Send Reset Email</button>
+        <label>Temporary password</label>
+        <input id="adminTempPasswordInput" type="text" value="Welcome123!" placeholder="Temporary password">
+        <button id="adminSetTempPasswordBtn">Set Temporary Password</button>
+        <button id="adminSendResetBtn" class="secondary">Send Reset Email Instead</button>
         <div id="adminResetStatus" class="small"></div>
       </div>
 
@@ -93,6 +96,8 @@
       <div class="adminUserBox">
         <h3>App Users</h3>
         <div class="small">Shows users saved in the app profile table. Use Refresh after new signups.</div>
+        <label>Search users</label>
+        <input id="adminUserSearchInput" type="text" placeholder="Search name or email">
         <button id="refreshUsersBtn" class="secondary">Refresh Users</button>
         <div id="adminUsersList" class="adminUsersList small">No users loaded yet.</div>
       </div>
@@ -244,11 +249,24 @@
     </div>
   </div>
 
+  <div id="forcePasswordChangeModal" class="permissionModal hidden">
+    <div class="permissionCard">
+      <h2>Change Required</h2>
+      <p>Your password was reset by an admin. Please choose a new password before using the map.</p>
+      <label>New password</label>
+      <input id="forcedNewPasswordInput" type="password" placeholder="New password">
+      <label>Confirm password</label>
+      <input id="forcedConfirmPasswordInput" type="password" placeholder="Confirm password">
+      <button id="forcedSavePasswordBtn">Save New Password</button>
+      <div id="forcedPasswordStatus" class="small"></div>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js?v=28"></script>
-  <script src="bundle.js?v=28"></script>
+  <script src="config.js?v=29"></script>
+  <script src="bundle.js?v=29"></script>
 </body>
 </html>
