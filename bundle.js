@@ -385,13 +385,28 @@
     }
   }
 
+  function updateAdminButtonVisibility(){
+    const btn = document.getElementById("adminBtn");
+    if (!btn) return;
+    btn.classList.toggle("hidden", !isAdmin);
+  }
+
   async function checkAdmin(){
-    const { data } = await supabaseClient
+    isAdmin = false;
+
+    if (!supabaseClient || !currentUser) {
+      updateAdminButtonVisibility();
+      return;
+    }
+
+    const { data, error } = await supabaseClient
       .from("admins")
       .select("user_id")
       .eq("user_id", currentUser.id)
       .maybeSingle();
-    isAdmin = !!data;
+
+    isAdmin = !error && !!data;
+    updateAdminButtonVisibility();
   }
 
   async function loadCloudData(){
@@ -712,6 +727,10 @@
   }
 
   async function openAdmin(){
+    if (!isAdmin) {
+      alert("Admin access only.");
+      return;
+    }
     showSheet("Admin Center", `
       <div class="miniTabs">
         <button id="adminUsersTab" class="active">Users</button>
@@ -1092,8 +1111,10 @@
 
   async function start(){
     initControls();
+    updateAdminButtonVisibility();
     initMap();
     await initAuth();
+    updateAdminButtonVisibility();
   }
 
   window.addEventListener("error", e => {
