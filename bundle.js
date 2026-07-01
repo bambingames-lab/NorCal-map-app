@@ -284,11 +284,11 @@
       style: f => {
         const a = state.coverageAreas[f.properties.id];
         return {
-          color: coverageTeamColor(a),
+          color: coverageOutlineColor(a),
           weight: 3,
           opacity: 1,
-          fillColor: coverageTeamColor(a),
-          fillOpacity: 0.68
+          fillColor: coverageFillColor(a),
+          fillOpacity: 0.64
         };
       },
       onEachFeature: (f, layer) => {
@@ -485,6 +485,17 @@
 
   function coverageTeamColor(area){
     return teamColorById(coverageTeamId(area), area?.team_color || area?.color || "#22c55e");
+  }
+
+  function coverageFillColor(area){
+    // Freehand fill is the user's chosen drawing color, not the ZIP/team fill color.
+    return area?.color || area?.user_color || state.profile.color || "#22c55e";
+  }
+
+  function coverageOutlineColor(area){
+    // Outline follows the current team color, so if the admin changes a team color,
+    // the outline updates automatically while the user's freehand fill stays distinct.
+    return coverageTeamColor(area);
   }
 
 
@@ -913,7 +924,7 @@
         changed++;
       }
       area.team_color = coverageTeamColor(area);
-      area.color = area.color || coverageTeamColor(area);
+      area.color = area.color || state.profile.color || "#22c55e";
       area.updated_at = new Date().toISOString();
 
       if (supabaseClient && currentUser) {
@@ -1029,6 +1040,7 @@
       user_tag: userCoverageTag(),
       display_name: userCoverageTag(),
       tag: userCoverageTag(),
+      user_color: userCoverageColor(),
       color: userCoverageColor(),
       team_id: team.id || state.profile.preferred_team_id || "",
       team_color: team.color || userCoverageColor(),
@@ -1043,8 +1055,33 @@
     refreshMap();
 
     if (supabaseClient && currentUser) {
-      const { error } = await supabaseClient.from("coverage_areas").upsert(area);
-      if (error) return alert("Could not save drawing: " + error.message);
+      let { error } = await supabaseClient.from("coverage_areas").upsert(area);
+
+      if (error) {
+        console.warn("Full coverage save failed, retrying minimal row:", error.message);
+
+        // Compatibility fallback for older coverage_areas schemas.
+        // This avoids phone saves failing when optional V2 columns are missing.
+        const minimalArea = {
+          id: area.id,
+          user_id: area.user_id,
+          user_email: area.user_email,
+          user_tag: area.user_tag,
+          color: area.color,
+          team_id: area.team_id,
+          team_color: area.team_color,
+          geometry: area.geometry,
+          updated_at: area.updated_at
+        };
+
+        const retry = await supabaseClient.from("coverage_areas").upsert(minimalArea);
+        error = retry.error;
+      }
+
+      if (error) {
+        alert("Could not save drawing to the shared database: " + error.message + "\\n\\nThe drawing is saved on this device only until this is fixed.");
+        return;
+      }
     }
 
     alert("Coverage shape saved.");
