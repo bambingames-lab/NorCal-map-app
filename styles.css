@@ -391,3 +391,15 @@ button{
 body.coverage-edit-mode .leaflet-pane.coveragePane path{
   pointer-events:auto;
 }
+
+
+/* ZIP click + drawing V2 fix */
+.leaflet-coverage-pane,
+.leaflet-coverage-pane svg,
+.leaflet-coverage-pane canvas,
+.leaflet-coverage-pane path{
+  pointer-events:none!important;
+}
+.coverageTag{
+  pointer-events:none!important;
+}
