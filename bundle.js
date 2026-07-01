@@ -77,11 +77,11 @@
     window.TM_V2_MAP = map;
 
     map.createPane("zipPane");
-    map.getPane("zipPane").style.zIndex = 520;
+    map.getPane("zipPane").style.zIndex = 430;
     map.getPane("zipPane").style.pointerEvents = "auto";
 
     map.createPane("coveragePane");
-    map.getPane("coveragePane").style.zIndex = 500;
+    map.getPane("coveragePane").style.zIndex = 560;
     map.getPane("coveragePane").style.pointerEvents = "none";
 
     map.createPane("tagPane");
@@ -139,6 +139,12 @@
       if (bounds.contains([lat,lng])) return true;
     }
     return false;
+  }
+
+  function setEditCoverageMode(on){
+    editCoverageMode = !!on;
+    document.body.classList.toggle("coverage-edit-mode", editCoverageMode);
+    refreshMap();
   }
 
   function refreshMap(){
@@ -212,6 +218,57 @@
         layer.on("click", (e) => {
           if (e && e.originalEvent) L.DomEvent.stopPropagation(e);
           openZipMenu(zip);
+        });
+      },
+      onEachFeature: (f, layer) => {
+        if (!editCoverageMode) return;
+        layer.on("click", (e) => {
+          if (e && e.originalEvent) L.DomEvent.stopPropagation(e);
+          const area = state.coverageAreas[f.properties.id];
+          if (!area) return;
+          showSheet("Edit Freehand Area", `
+            <div class="card">
+              <h3>${coverageTagName(area)}</h3>
+              <label>Name/tag</label>
+              <input id="editCoverageTagInput" value="${coverageTagName(area)}">
+              <label>Fill color</label>
+              <input id="editCoverageColorInput" type="color" value="${area.color || "#22c55e"}">
+              <button id="saveCoverageEditBtn">Save Changes</button>
+              <button id="deleteCoverageEditBtn" class="danger">Delete Area</button>
+              <button id="exitCoverageEditBtn" class="secondary">Back to ZIP Mode</button>
+            </div>
+          `);
+
+          document.getElementById("saveCoverageEditBtn").onclick = async () => {
+            area.user_tag = document.getElementById("editCoverageTagInput").value.trim() || area.user_tag;
+            area.color = document.getElementById("editCoverageColorInput").value || area.color;
+            area.updated_at = new Date().toISOString();
+            state.coverageAreas[area.id] = area;
+            saveState();
+            if (supabaseClient && currentUser) {
+              const { error } = await supabaseClient.from("coverage_areas").upsert(area);
+              if (error) return alert("Could not save: " + error.message);
+            }
+            refreshMap();
+            alert("Freehand area updated.");
+          };
+
+          document.getElementById("deleteCoverageEditBtn").onclick = async () => {
+            if (!confirm("Delete this freehand area for everyone?")) return;
+            delete state.coverageAreas[area.id];
+            saveState();
+            if (supabaseClient && currentUser) {
+              const { error } = await supabaseClient.from("coverage_areas").delete().eq("id", area.id);
+              if (error) return alert("Could not delete: " + error.message);
+            }
+            closeSheet();
+            refreshMap();
+          };
+
+          document.getElementById("exitCoverageEditBtn").onclick = () => {
+            setEditCoverageMode(false);
+            closeSheet();
+          };
         });
       }
     }).addTo(map);
@@ -896,6 +953,7 @@
   }
 
   function startSquareDrawing(){
+    setEditCoverageMode(false);
     closeSheet();
     alert("Tap the center of the square coverage area.");
     drawingMode = "square";
@@ -906,6 +964,7 @@
   }
 
   function startCircleDrawing(){
+    setEditCoverageMode(false);
     closeSheet();
     alert("Tap the center of the circle coverage area.");
     drawingMode = "circle";
@@ -916,6 +975,7 @@
   }
 
   function startFreehandDrawingV2(){
+    setEditCoverageMode(false);
     closeSheet();
     drawingMode = "freehand";
     drawingPoints = [];
@@ -979,17 +1039,34 @@
     showSheet("Coverage Drawing", `
       <div class="card">
         <h3>New Coverage Shape</h3>
-        <div class="status">Shapes auto-fill and save. ZIPs stay clickable in normal mode.</div>
+        <div class="status">Shapes auto-fill and save. Freehand sits above ZIP colors.</div>
         <button id="drawFreehandBtn">Freehand</button>
         <div class="compactGrid">
           <button id="drawSquareBtn" class="secondary">Square</button>
           <button id="drawCircleBtn" class="secondary">Circle</button>
         </div>
       </div>
+
+      <div class="card">
+        <h3>Edit Mode</h3>
+        <button id="editCoverageModeBtn">Edit Drawings Mode</button>
+        <button id="zipSelectModeBtn" class="secondary">ZIP Select Mode</button>
+        <div class="status">ZIP Select Mode lets ZIPs receive clicks. Edit Drawings Mode makes freehand areas clickable.</div>
+      </div>
     `);
     document.getElementById("drawFreehandBtn").onclick = startFreehandDrawingV2;
     document.getElementById("drawSquareBtn").onclick = startSquareDrawing;
     document.getElementById("drawCircleBtn").onclick = startCircleDrawing;
+    document.getElementById("editCoverageModeBtn").onclick = () => {
+      setEditCoverageMode(true);
+      closeSheet();
+      alert("Edit Drawings Mode on. Tap a freehand area to edit or delete it.");
+    };
+    document.getElementById("zipSelectModeBtn").onclick = () => {
+      setEditCoverageMode(false);
+      closeSheet();
+      alert("ZIP Select Mode on. Tap ZIPs to mark dates.");
+    };
   }
 
 

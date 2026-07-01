@@ -419,3 +419,33 @@ body.coverage-edit-mode .leaflet-pane.coveragePane path{
 .coverageTag{
   pointer-events:none!important;
 }
+
+
+/* Freehand above ZIP colors, editable only in Edit Drawings Mode */
+.leaflet-coverage-pane{
+  z-index:560!important;
+  pointer-events:none!important;
+}
+.leaflet-coverage-pane *{
+  pointer-events:none!important;
+}
+body.coverage-edit-mode .leaflet-coverage-pane{
+  pointer-events:auto!important;
+}
+body.coverage-edit-mode .leaflet-coverage-pane *{
+  pointer-events:auto!important;
+}
+.leaflet-zip-pane{
+  z-index:430!important;
+  pointer-events:auto!important;
+}
+.leaflet-zip-pane *{
+  pointer-events:auto!important;
+}
+.leaflet-tag-pane,
+.leaflet-tag-pane *{
+  pointer-events:none!important;
+}
+.coverageTag{
+  pointer-events:none!important;
+}
