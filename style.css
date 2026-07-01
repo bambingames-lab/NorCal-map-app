@@ -651,3 +651,29 @@ body.drawing-active .drawFab{
   margin-top:8px;
   font-weight:700;
 }
+
+
+.adminUsersList{
+  margin-top:10px;
+  max-height:260px;
+  overflow:auto;
+  border:1px solid #e7f1e8;
+  border-radius:12px;
+  background:#fff;
+}
+.adminUserRow{
+  padding:10px;
+  border-bottom:1px solid #eef5e6;
+}
+.adminUserRow:last-child{
+  border-bottom:none;
+}
+.adminUserRow strong{
+  display:block;
+  font-size:14px;
+}
+.adminUserMeta{
+  color:#555;
+  font-size:12px;
+  margin-top:3px;
+}

@@ -773,6 +773,7 @@ function subscribeRealtime() {
       initControls();
 initPasswordResetControls();
 initAdminPasswordResetControls();
+initAdminUsersControls();
 initLocationControls();
 initAppTools();
 setTimeout(() => showLocationPermissionPrompt(false), 1200);
@@ -1408,6 +1409,61 @@ function drawPointFromEvent(e) {
 }
 
 
+
+
+
+// Admin user list
+function renderAdminUsers(users) {
+  const el = document.getElementById("adminUsersList");
+  if (!el) return;
+
+  if (!users || !users.length) {
+    el.innerHTML = "No users found yet.";
+    return;
+  }
+
+  el.innerHTML = users.map(u => {
+    const name = u.display_name || u.email || "Unknown user";
+    const email = u.email || "";
+    const role = u.role || "user";
+    const active = u.is_active === false ? "Inactive" : "Active";
+    const lastSeen = u.last_seen ? new Date(u.last_seen).toLocaleString() : "Not tracked";
+    return `
+      <div class="adminUserRow">
+        <strong>${name}</strong>
+        <div class="adminUserMeta">${email}</div>
+        <div class="adminUserMeta">Role: ${role} • ${active}</div>
+        <div class="adminUserMeta">Last seen: ${lastSeen}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function loadAdminUsers() {
+  if (!isAdmin) {
+    alert("Only the admin can view users.");
+    return;
+  }
+  if (!supabaseClient) return;
+
+  const { data, error } = await supabaseClient
+    .from("user_profiles")
+    .select("user_id,email,display_name,role,is_active,last_seen,updated_at")
+    .order("email", { ascending: true });
+
+  if (error) {
+    const el = document.getElementById("adminUsersList");
+    if (el) el.textContent = "Could not load users: " + error.message;
+    return;
+  }
+
+  renderAdminUsers(data || []);
+}
+
+function initAdminUsersControls() {
+  const btn = document.getElementById("refreshUsersBtn");
+  if (btn) btn.onclick = loadAdminUsers;
+}
 
 
 // Admin password reset
