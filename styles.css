@@ -425,3 +425,12 @@ body.coverage-edit-mode .leaflet-coverage-pane *{
   z-index:700!important;
   pointer-events:none!important;
 }
+
+
+/* Team color source-of-truth visuals */
+.leaflet-zip-pane path{
+  filter:saturate(1.25);
+}
+.leaflet-coverage-pane path{
+  filter:saturate(1.35);
+}

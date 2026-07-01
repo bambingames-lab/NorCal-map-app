@@ -212,7 +212,7 @@
           weight: selectedZip === zip ? 2.3 : (map.getZoom() >= 12 ? 1.4 : 0.85),
           opacity: 1,
           fillColor: t?.last_worked ? territoryTeamColor(zip) : "transparent",
-          fillOpacity: t?.last_worked ? 0.62 : 0.01,
+          fillOpacity: t?.last_worked ? 0.68 : 0.01,
           interactive: true
         };
       },
@@ -284,11 +284,11 @@
       style: f => {
         const a = state.coverageAreas[f.properties.id];
         return {
-          color: a?.team_color || a?.color || "#22c55e",
+          color: coverageTeamColor(a),
           weight: 3,
           opacity: 1,
-          fillColor: a?.color || "#22c55e",
-          fillOpacity: 0.64
+          fillColor: coverageTeamColor(a),
+          fillOpacity: 0.68
         };
       },
       onEachFeature: (f, layer) => {
@@ -460,14 +460,31 @@
     return state.teams.map(t => `<option value="${t.id}" ${selected === t.id ? "selected" : ""}>${t.name}</option>`).join("");
   }
 
+
   function teamById(id){
     return state.teams.find(t => t.id === id) || null;
   }
 
-  function territoryTeamColor(zip){
+  function teamColorById(id, fallback = "#9DE600"){
+    const team = teamById(id);
+    return team?.color || fallback;
+  }
+
+  function territoryTeamId(zip){
     const t = state.territories[zip] || {};
-    const team = teamById(t.owner_team_id || t.team_id || t.handoff_team_id);
-    return team?.color || "#9DE600";
+    return t.owner_team_id || t.team_id || t.handoff_team_id || state.teams[0]?.id || "";
+  }
+
+  function territoryTeamColor(zip){
+    return teamColorById(territoryTeamId(zip), "#9DE600");
+  }
+
+  function coverageTeamId(area){
+    return area?.team_id || area?.owner_team_id || area?.preferred_team_id || state.profile.preferred_team_id || state.teams[0]?.id || "";
+  }
+
+  function coverageTeamColor(area){
+    return teamColorById(coverageTeamId(area), area?.team_color || area?.color || "#22c55e");
   }
 
 
@@ -585,6 +602,11 @@
       state.profile.display_name = document.getElementById("profileNameInput").value.trim();
       state.profile.color = document.getElementById("profileColorInput").value;
       state.profile.preferred_team_id = document.getElementById("profileTeamInput").value;
+      Object.values(state.coverageAreas || {}).forEach(a => {
+        if (currentUser && a.user_id === currentUser.id && !a.team_id) {
+          a.team_id = state.profile.preferred_team_id;
+        }
+      });
       saveState();
 
       if (supabaseClient && currentUser) {
@@ -773,6 +795,8 @@
           <h3>Teams</h3>
           <div id="teamsEditor"></div>
           <button id="saveTeamsBtn">Save Teams</button>
+          <button id="repairCoverageTeamsBtn" class="secondary">Repair Missing Coverage Teams</button>
+          <div class="status">Map colors now use the current team color as the source of truth.</div>
         </div>
       </div>
 
@@ -805,6 +829,17 @@
     document.getElementById("refreshReportsBtn").onclick = renderAdminReport;
     renderTeams();
     document.getElementById("saveTeamsBtn").onclick = saveTeams;
+    state.teams.forEach(t => {
+      const input = document.getElementById("teamColor_" + t.id);
+      if (input) {
+        input.addEventListener("input", () => {
+          t.color = input.value;
+          refreshMap();
+        });
+      }
+    });
+    const repairBtn = document.getElementById("repairCoverageTeamsBtn");
+    if (repairBtn) repairBtn.onclick = repairCoverageTeams;
   }
 
   function renderAdminReport(){
@@ -867,6 +902,31 @@
     `).join("");
   }
 
+
+  async function repairCoverageTeams(){
+    const fallbackTeamId = state.teams[0]?.id || "";
+    let changed = 0;
+
+    for (const area of Object.values(state.coverageAreas || {})) {
+      if (!area.team_id) {
+        area.team_id = area.owner_team_id || area.preferred_team_id || fallbackTeamId;
+        changed++;
+      }
+      area.team_color = coverageTeamColor(area);
+      area.color = area.color || coverageTeamColor(area);
+      area.updated_at = new Date().toISOString();
+
+      if (supabaseClient && currentUser) {
+        await supabaseClient.from("coverage_areas").upsert(area);
+      }
+    }
+
+    saveState();
+    refreshMap();
+    alert("Coverage team repair complete. Updated " + changed + " areas missing team IDs.");
+  }
+
+
   async function saveTeams(){
     state.teams = state.teams.map(t => ({
       ...t,
@@ -886,7 +946,9 @@
         });
       }
     }
-    alert("Teams saved.");
+    refreshMap();
+    renderTeams();
+    alert("Teams saved. Map colors updated.");
   }
 
   async function setTemporaryPassword(){
@@ -922,7 +984,7 @@
   }
 
   function selectedTeam(){
-    return state.teams.find(t => t.id === state.profile.preferred_team_id) || state.teams[0] || {};
+    return teamById(state.profile.preferred_team_id) || state.teams[0] || {};
   }
 
   function squareGeometry(center, meters = 700){
@@ -968,7 +1030,7 @@
       display_name: userCoverageTag(),
       tag: userCoverageTag(),
       color: userCoverageColor(),
-      team_id: team.id || "",
+      team_id: team.id || state.profile.preferred_team_id || "",
       team_color: team.color || userCoverageColor(),
       shape_type: shapeType,
       last_worked: new Date().toISOString().slice(0,10),
