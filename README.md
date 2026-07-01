@@ -1,21 +1,19 @@
-# Territory Manager V2.1.1
+# Territory Manager V2.1.2
 
 Upload this full package to the V2 branch root and replace existing files.
 
-## After upload
 Open V2 with:
-`?v=13`
+`?v=14`
 
 ## What changed
-- ZIPs use team colors.
-- Freehand areas are visually different from ZIP fills.
-- Freehand fill = user color.
-- Freehand outline = team color.
-- Phone save errors should be reduced by retrying with a simpler database save.
-- Tags are smaller.
+- Freehand fill now uses the team color.
+- Freehand outline is black.
+- Freehand outline is the same thickness as ZIP outlines.
+- Smaller freehand tags are still included.
+- Phone save fallback from V2.1.1 remains included.
 
-## If phone freehand still says it cannot save
-Run this in Supabase SQL Editor:
+## If phone freehand still cannot save
+Run:
 `v2.1.1-coverage-save-schema-fix.sql`
 
-That SQL only adds missing optional columns and refreshes RLS policies for coverage areas.
+That SQL is still included.

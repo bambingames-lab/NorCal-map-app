@@ -284,11 +284,11 @@
       style: f => {
         const a = state.coverageAreas[f.properties.id];
         return {
-          color: coverageOutlineColor(a),
-          weight: 3,
+          color: "#000",
+          weight: map.getZoom() >= 12 ? 1.4 : 0.85,
           opacity: 1,
-          fillColor: coverageFillColor(a),
-          fillOpacity: 0.64
+          fillColor: coverageTeamColor(a),
+          fillOpacity: 0.68
         };
       },
       onEachFeature: (f, layer) => {
@@ -488,14 +488,13 @@
   }
 
   function coverageFillColor(area){
-    // Freehand fill is the user's chosen drawing color, not the ZIP/team fill color.
+    // Fallback helper for older code/data. V2.1.2 renders freehand fill from team color.
     return area?.color || area?.user_color || state.profile.color || "#22c55e";
   }
 
   function coverageOutlineColor(area){
-    // Outline follows the current team color, so if the admin changes a team color,
-    // the outline updates automatically while the user's freehand fill stays distinct.
-    return coverageTeamColor(area);
+    // Fallback helper for older code/data. V2.1.2 renders freehand outline as black.
+    return "#000";
   }
 
 

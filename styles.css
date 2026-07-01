@@ -457,3 +457,10 @@ body.coverage-edit-mode .leaflet-coverage-pane *{
 .leaflet-coverage-pane path{
   filter:saturate(1.15);
 }
+
+
+/* V2.1.2 freehand visual rules */
+.leaflet-coverage-pane path{
+  stroke:#000!important;
+  filter:saturate(1.2);
+}
