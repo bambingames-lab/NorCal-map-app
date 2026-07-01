@@ -403,3 +403,19 @@ body.coverage-edit-mode .leaflet-pane.coveragePane path{
 .coverageTag{
   pointer-events:none!important;
 }
+
+
+/* Desktop ZIP click + drawing button fix */
+.leaflet-coverage-pane,
+.leaflet-coverage-pane *,
+.leaflet-tag-pane,
+.leaflet-tag-pane *{
+  pointer-events:none!important;
+}
+.leaflet-zip-pane,
+.leaflet-zip-pane *{
+  pointer-events:auto!important;
+}
+.coverageTag{
+  pointer-events:none!important;
+}

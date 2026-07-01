@@ -77,17 +77,31 @@
     window.TM_V2_MAP = map;
 
     map.createPane("zipPane");
-    map.getPane("zipPane").style.zIndex = 430;
+    map.getPane("zipPane").style.zIndex = 520;
+    map.getPane("zipPane").style.pointerEvents = "auto";
+
     map.createPane("coveragePane");
-    map.getPane("coveragePane").style.zIndex = 520;
+    map.getPane("coveragePane").style.zIndex = 500;
+    map.getPane("coveragePane").style.pointerEvents = "none";
+
     map.createPane("tagPane");
     map.getPane("tagPane").style.zIndex = 680;
+    map.getPane("tagPane").style.pointerEvents = "none";
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution:"© OpenStreetMap contributors"
     }).addTo(map);
 
     map.on("moveend zoomend", refreshMap);
+
+    // Desktop fallback: if pane/layer hit testing misses, still detect ZIP under cursor.
+    map.on("click", (e) => {
+      if (drawingMode) return;
+      if (!zipData || map.getZoom() < Number(state.settings.zipZoom || 10)) return;
+      const zip = findZipAtLatLng(e.latlng);
+      if (zip) openZipMenu(zip);
+    });
+
     setTimeout(() => map.invalidateSize(), 250);
     loadZipData();
   }
@@ -132,6 +146,42 @@
     renderCoverage();
   }
 
+
+  function pointInRing(point, ring){
+    // point = [lng,lat], ring = [[lng,lat],...]
+    let inside = false;
+    const x = point[0], y = point[1];
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][0], yi = ring[i][1];
+      const xj = ring[j][0], yj = ring[j][1];
+      const intersect = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / ((yj - yi) || 0.0000001) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  function pointInPolygonGeometry(latlng, geometry){
+    if (!geometry) return false;
+    const point = [latlng.lng, latlng.lat];
+    const polys = geometry.type === "MultiPolygon" ? geometry.coordinates : [geometry.coordinates];
+    for (const poly of polys) {
+      if (!poly || !poly[0]) continue;
+      if (pointInRing(point, poly[0])) return true;
+    }
+    return false;
+  }
+
+  function findZipAtLatLng(latlng){
+    if (!zipData || !zipData.features) return null;
+    const b = map.getBounds().pad(0.1);
+    const candidates = zipData.features.filter(f => featureInBounds(f, b));
+    for (const f of candidates) {
+      if (pointInPolygonGeometry(latlng, f.geometry)) return zipCode(f);
+    }
+    return null;
+  }
+
   function renderZips(){
     if (zipLayer) {
       map.removeLayer(zipLayer);
@@ -159,7 +209,10 @@
       },
       onEachFeature: (f, layer) => {
         const zip = zipCode(f);
-        layer.on("click", () => openZipMenu(zip));
+        layer.on("click", (e) => {
+          if (e && e.originalEvent) L.DomEvent.stopPropagation(e);
+          openZipMenu(zip);
+        });
       }
     }).addTo(map);
   }
@@ -771,6 +824,175 @@
     alert("Temporary password successfully changed for " + email + ".");
   }
 
+
+  function userCoverageTag(){
+    return state.profile.display_name || currentUser?.email || "Coverage";
+  }
+
+  function userCoverageColor(){
+    return state.profile.color || "#22c55e";
+  }
+
+  function selectedTeam(){
+    return state.teams.find(t => t.id === state.profile.preferred_team_id) || state.teams[0] || {};
+  }
+
+  function squareGeometry(center, meters = 700){
+    const lat = center.lat, lng = center.lng;
+    const dLat = meters / 111320;
+    const dLng = meters / (111320 * Math.cos(lat * Math.PI / 180));
+    return { type:"Polygon", coordinates:[[
+      [lng - dLng, lat - dLat],
+      [lng + dLng, lat - dLat],
+      [lng + dLng, lat + dLat],
+      [lng - dLng, lat + dLat],
+      [lng - dLng, lat - dLat]
+    ]]};
+  }
+
+  function circleGeometry(center, meters = 700, steps = 48){
+    const lat = center.lat, lng = center.lng;
+    const coords = [];
+    for (let i=0; i<=steps; i++){
+      const a = (Math.PI * 2 * i) / steps;
+      const dLat = (Math.sin(a) * meters) / 111320;
+      const dLng = (Math.cos(a) * meters) / (111320 * Math.cos(lat * Math.PI / 180));
+      coords.push([lng + dLng, lat + dLat]);
+    }
+    return { type:"Polygon", coordinates:[coords] };
+  }
+
+  function freehandGeometry(points){
+    const coords = points.map(p => [p.lng, p.lat]);
+    if (coords.length < 3) return null;
+    coords.push(coords[0]);
+    return { type:"Polygon", coordinates:[coords] };
+  }
+
+  async function saveCoverageGeometry(geometry, shapeType){
+    const id = crypto?.randomUUID ? crypto.randomUUID() : "area_" + Date.now();
+    const team = selectedTeam();
+    const area = {
+      id,
+      user_id: currentUser?.id || null,
+      user_email: currentUser?.email || "",
+      user_tag: userCoverageTag(),
+      color: userCoverageColor(),
+      team_id: team.id || "",
+      team_color: team.color || userCoverageColor(),
+      shape_type: shapeType,
+      last_worked: new Date().toISOString().slice(0,10),
+      geometry,
+      updated_at: new Date().toISOString()
+    };
+    state.coverageAreas[id] = area;
+    saveState();
+    refreshMap();
+    if (supabaseClient && currentUser) {
+      const { error } = await supabaseClient.from("coverage_areas").upsert(area);
+      if (error) return alert("Could not save drawing: " + error.message);
+    }
+    alert("Coverage shape saved.");
+  }
+
+  function startSquareDrawing(){
+    closeSheet();
+    alert("Tap the center of the square coverage area.");
+    drawingMode = "square";
+    map.once("click", async e => {
+      drawingMode = null;
+      await saveCoverageGeometry(squareGeometry(e.latlng), "square");
+    });
+  }
+
+  function startCircleDrawing(){
+    closeSheet();
+    alert("Tap the center of the circle coverage area.");
+    drawingMode = "circle";
+    map.once("click", async e => {
+      drawingMode = null;
+      await saveCoverageGeometry(circleGeometry(e.latlng), "circle");
+    });
+  }
+
+  function startFreehandDrawingV2(){
+    closeSheet();
+    drawingMode = "freehand";
+    drawingPoints = [];
+    map.dragging.disable();
+    const container = map.getContainer();
+    container.style.cursor = "crosshair";
+    alert("Hold and drag to draw. Release to save.");
+
+    const cleanup = () => {
+      container.removeEventListener("pointerdown", pointerDown);
+      container.removeEventListener("pointermove", pointerMove);
+      container.removeEventListener("pointerup", pointerUp);
+      container.removeEventListener("pointercancel", pointerCancel);
+      map.dragging.enable();
+      container.style.cursor = "";
+      drawingMode = null;
+      if (activeDrawLine) {
+        map.removeLayer(activeDrawLine);
+        activeDrawLine = null;
+      }
+    };
+
+    const pointerDown = ev => {
+      if (drawingMode !== "freehand") return;
+      ev.preventDefault();
+      drawingPoints = [];
+      const latlng = map.mouseEventToLatLng(ev);
+      drawingPoints.push(latlng);
+      activeDrawLine = L.polyline([latlng], { color:userCoverageColor(), weight:4 }).addTo(map);
+      container.setPointerCapture?.(ev.pointerId);
+    };
+
+    const pointerMove = ev => {
+      if (drawingMode !== "freehand" || !activeDrawLine) return;
+      ev.preventDefault();
+      const latlng = map.mouseEventToLatLng(ev);
+      drawingPoints.push(latlng);
+      activeDrawLine.setLatLngs(drawingPoints);
+    };
+
+    const pointerUp = async ev => {
+      if (drawingMode !== "freehand") return;
+      ev.preventDefault();
+      const latlng = map.mouseEventToLatLng(ev);
+      drawingPoints.push(latlng);
+      const geometry = freehandGeometry(drawingPoints);
+      cleanup();
+      if (!geometry) return alert("Draw a larger area before saving.");
+      await saveCoverageGeometry(geometry, "freehand");
+    };
+
+    const pointerCancel = () => cleanup();
+
+    container.addEventListener("pointerdown", pointerDown);
+    container.addEventListener("pointermove", pointerMove);
+    container.addEventListener("pointerup", pointerUp);
+    container.addEventListener("pointercancel", pointerCancel);
+  }
+
+  function openDrawingTools(){
+    showSheet("Coverage Drawing", `
+      <div class="card">
+        <h3>New Coverage Shape</h3>
+        <div class="status">Shapes auto-fill and save. ZIPs stay clickable in normal mode.</div>
+        <button id="drawFreehandBtn">Freehand</button>
+        <div class="compactGrid">
+          <button id="drawSquareBtn" class="secondary">Square</button>
+          <button id="drawCircleBtn" class="secondary">Circle</button>
+        </div>
+      </div>
+    `);
+    document.getElementById("drawFreehandBtn").onclick = startFreehandDrawingV2;
+    document.getElementById("drawSquareBtn").onclick = startSquareDrawing;
+    document.getElementById("drawCircleBtn").onclick = startCircleDrawing;
+  }
+
+
   function initControls(){
     document.getElementById("closeSheetBtn").onclick = closeSheet;
     document.getElementById("accountBtn").onclick = openAccount;
@@ -780,14 +1002,7 @@
       openSettings();
       setTimeout(() => locateMe(true), 50);
     };
-    document.getElementById("drawFab").onclick = () => {
-      showSheet("Coverage Drawing", `
-        <div class="card">
-          <h3>Drawing V2</h3>
-          <div class="status">The V2 shell is now working. Next update will add the improved freehand drawing tool back into this smoother UI.</div>
-        </div>
-      `);
-    };
+    document.getElementById("drawFab").onclick = openDrawingTools;
   }
 
   async function start(){
