@@ -1568,7 +1568,8 @@ async function adminSetTemporaryPassword() {
     return;
   }
 
-  setAdminResetStatus("Temporary password set. User must change password after login.");
+  setAdminResetStatus("✅ Temporary password successfully set for " + email + ". User must change it after login.");
+  alert("Temporary password successfully changed for " + email + ".\n\nThey can now log in with the temporary password and will be required to create a new one.");
   await loadAdminUsers();
 }
 
