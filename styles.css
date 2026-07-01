@@ -379,3 +379,15 @@ button{
   box-shadow:0 3px 12px rgba(0,0,0,.35);
   pointer-events:none;
 }
+
+
+/* V2 interaction fix */
+.coverageTag{
+  pointer-events:none!important;
+}
+.leaflet-pane.coveragePane path{
+  pointer-events:none;
+}
+body.coverage-edit-mode .leaflet-pane.coveragePane path{
+  pointer-events:auto;
+}
